@@ -1,17 +1,15 @@
 import type { NextConfig } from 'next';
 
 /**
- * 브라우저는 동일 출처 /api/auth/* 만 호출하고 Next.js가 FastAPI로 전달한다.
- * 경로를 이중으로 붙이지 않도록 trailing slash 없는 origin만 허용한다.
+ * 로컬에서 Next.js만 실행할 때는 BACKEND_API_ORIGIN을 지정해 FastAPI로 프록시한다.
+ * Vercel에서는 루트 vercel.json이 /api/* 요청을 backend 서비스로 직접 전달한다.
  */
-function resolveBackendApiOrigin(): string {
+function resolveBackendApiOrigin(): string | undefined {
+  if (process.env.VERCEL === '1') return undefined;
+
   const origin = process.env.BACKEND_API_ORIGIN?.trim();
 
-  if (!origin) {
-    throw new Error(
-      'BACKEND_API_ORIGIN 환경 변수가 필요합니다. frontend/.env.local에 예: http://127.0.0.1:8000 을 설정하세요(.env.example 참고).',
-    );
-  }
+  if (!origin) return undefined;
 
   if (origin.endsWith('/')) {
     throw new Error('BACKEND_API_ORIGIN 끝에 / 를 붙이지 마세요. 예: http://127.0.0.1:8000');
@@ -24,6 +22,8 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   async rewrites() {
     const backendApiOrigin = resolveBackendApiOrigin();
+
+    if (!backendApiOrigin) return [];
 
     return [
       {
