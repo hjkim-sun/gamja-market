@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
+import { HeaderAuth } from '@/features/auth/components/HeaderAuth';
 
 export function Header() {
   const router = useRouter();
@@ -65,15 +65,8 @@ export function Header() {
           </button>
         </form>
 
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="ghost"
-            disabled
-            title="로그인은 2단계에서 지원합니다"
-            className="hidden sm:inline-flex"
-          >
-            로그인
-          </Button>
+        <div className="flex min-w-0 items-center justify-end gap-1 sm:gap-2">
+          <HeaderAuth />
           <Link
             href="/requests/new"
             className="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl bg-potato-400 px-3 py-2.5 text-sm font-bold text-stone-900 transition hover:bg-potato-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-potato-500 sm:px-4"

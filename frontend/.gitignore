@@ -3,3 +3,8 @@ node_modules/
 coverage/
 *.log
 .DS_Store
+
+# 실제 환경 값은 추적하지 않는다. .env.example만 커밋한다.
+.env
+.env.local
+.env.*.local

@@ -1,0 +1,1 @@
+"""Gamja Market backend application."""

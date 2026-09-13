@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 
 import { Footer } from '@/components/layout/Footer';
 import { Header } from '@/components/layout/Header';
+import { AuthProvider } from '@/features/auth/AuthProvider';
 
 import './globals.css';
 
@@ -18,10 +19,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ko">
       <body className="flex min-h-screen flex-col">
-        <Suspense fallback={<div className="h-[126px] border-b border-stone-200 bg-[#fbfaf7] lg:h-[69px]" />}>
-          <Header />
-        </Suspense>
-        <main className="flex-1">{children}</main>
+        <AuthProvider>
+          <Suspense fallback={<div className="h-[126px] border-b border-stone-200 bg-[#fbfaf7] lg:h-[69px]" />}>
+            <Header />
+          </Suspense>
+          <main className="flex-1">{children}</main>
+        </AuthProvider>
         <Footer />
       </body>
     </html>
