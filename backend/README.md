@@ -1,10 +1,9 @@
 # Gamja Market backend
 
-Copy `.env.example` to `.env` and provide PostgreSQL credentials.  The development database is migrated explicitly; the application does not run migrations at startup.
+Copy `.env.example` to `.env` and provide PostgreSQL credentials. The application starts without running migrations. Migration work is separate from service startup; check the target of `MIGRATION_DATABASE_URL` before running it, since it may point to Supabase.
 
 ```sh
 uv sync
-uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
