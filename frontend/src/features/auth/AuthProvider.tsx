@@ -21,6 +21,8 @@ export interface AuthContextValue {
   user: AuthUser | null;
   /** 복원 실패(통신/5xx) 안내. 401은 오류가 아니라 anonymous다. */
   error: string | null;
+  /** /me route itself is missing (404), so navigation to the auth pages stays available. */
+  authRouteMissing: boolean;
   refresh: () => Promise<void>;
   signup: (payload: SignupRequest) => Promise<AuthUser>;
   login: (payload: LoginRequest) => Promise<AuthUser>;
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [authRouteMissing, setAuthRouteMissing] = useState(false);
 
   /**
    * 요청 세대 번호. /me 복원과 로그인/로그아웃 응답이 역전되어도
@@ -53,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(nextUser);
     setStatus('authenticated');
     setError(null);
+    setAuthRouteMissing(false);
   }, []);
 
   /** 쿠키 기준으로 현재 회원을 다시 확인한다. 401은 anonymous, 그 밖의 실패는 error다. */
@@ -71,12 +75,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setStatus('anonymous');
           setError(null);
+          setAuthRouteMissing(false);
           return;
         }
 
         // 통신 실패와 5xx는 비로그인으로 단정하지 않는다.
         setStatus('error');
         setError(RESTORE_ERROR_MESSAGE);
+        setAuthRouteMissing(caught instanceof ApiError && caught.status === 404);
       }
     },
     [applyUser, isCurrent, nextGeneration],
@@ -107,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     setStatus('loading');
     setError(null);
+    setAuthRouteMissing(false);
     await restore();
   }, [restore]);
 
@@ -139,11 +146,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setStatus('anonymous');
     setError(null);
+    setAuthRouteMissing(false);
   }, [isCurrent, nextGeneration]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, error, refresh, signup, login, logout }),
-    [status, user, error, refresh, signup, login, logout],
+    () => ({ status, user, error, authRouteMissing, refresh, signup, login, logout }),
+    [status, user, error, authRouteMissing, refresh, signup, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

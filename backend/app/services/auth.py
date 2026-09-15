@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -15,6 +18,40 @@ from app.core.security import (
 from app.db.models import AuthSession, User
 from app.repositories.sessions import delete_by_hash
 from app.repositories.users import get_by_email
+
+logger = logging.getLogger(__name__)
+
+
+def _log_database_failure(operation: str, exc: SQLAlchemyError, settings: Settings) -> None:
+    original = getattr(exc, "orig", None)
+    host = make_url(settings.database_url).host or ""
+    endpoint = (
+        "supabase_direct" if host.startswith("db.") and host.endswith(".supabase.co")
+        else "supabase_pooler" if host.endswith(".pooler.supabase.com")
+        else "other"
+    )
+    detail = str(original).lower() if original is not None else ""
+    failure = next(
+        (label for marker, label in (
+            ("network is unreachable", "network_unreachable"),
+            ("connection timed out", "timeout"),
+            ("timeout expired", "timeout"),
+            ("password authentication failed", "authentication"),
+            ("could not translate host name", "dns"),
+            ("name or service not known", "dns"),
+            ("connection refused", "connection_refused"),
+        ) if marker in detail),
+        "unknown",
+    )
+    logger.error(
+        "auth.%s database failure: %s, driver=%s, sqlstate=%s, endpoint=%s, failure=%s",
+        operation,
+        type(exc).__name__,
+        type(original).__name__ if original is not None else "none",
+        getattr(original, "sqlstate", None),
+        endpoint,
+        failure,
+    )
 
 
 class EmailAlreadyExists(Exception):
@@ -57,17 +94,20 @@ def signup(db: Session, *, email: str, password: str, old_token: str | None, set
         db.rollback()
         if _is_users_email_unique_violation(exc):
             raise EmailAlreadyExists from None
+        _log_database_failure("signup", exc, settings)
         raise ServiceUnavailable from None
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
         db.rollback()
+        _log_database_failure("signup", exc, settings)
         raise ServiceUnavailable from None
 
 
 def login(db: Session, *, email: str, password: str, old_token: str | None, settings: Settings) -> tuple[User, str]:
     try:
         user = get_by_email(db, email)
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
         db.rollback()
+        _log_database_failure("login", exc, settings)
         raise ServiceUnavailable from None
     if user is None:
         db.rollback()
@@ -83,8 +123,9 @@ def login(db: Session, *, email: str, password: str, old_token: str | None, sett
         db.add(AuthSession(token_hash=hash_session_token(token), user_id=user.id, expires_at=session_expiry(settings)))
         db.commit()
         return user, token
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
         db.rollback()
+        _log_database_failure("login", exc, settings)
         raise ServiceUnavailable from None
 
 
