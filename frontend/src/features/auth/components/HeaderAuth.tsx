@@ -10,7 +10,7 @@ const authLinkClassName =
   'inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl px-2 py-2.5 text-sm font-bold text-stone-600 transition hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-500 sm:px-3';
 
 export function HeaderAuth() {
-  const { status, user, error, refresh, logout } = useAuth();
+  const { status, user, error, authRouteMissing, refresh, logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
 
@@ -39,10 +39,20 @@ export function HeaderAuth() {
 
   if (status === 'error') {
     return (
-      <div className="flex min-w-0 items-center gap-1">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-0.5 sm:gap-1">
         <span className="hidden truncate text-xs text-stone-500 sm:inline" role="alert">
           {error ?? '로그인 상태를 확인할 수 없습니다.'}
         </span>
+        {user === null && authRouteMissing ? (
+          <>
+            <Link href="/login" className={authLinkClassName}>
+              로그인
+            </Link>
+            <Link href="/signup" className={authLinkClassName}>
+              회원가입
+            </Link>
+          </>
+        ) : null}
         <Button variant="ghost" onClick={() => void refresh()}>
           다시 시도
         </Button>

@@ -13,11 +13,23 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = Field(min_length=1)
-    migration_database_url: str = Field(min_length=1)
+    # Alembic may use a dedicated DDL connection; otherwise it uses the runtime DB.
+    migration_database_url: str | None = Field(default=None, min_length=1)
     auth_allowed_origins: list[str] = Field(min_length=1)
     session_cookie_secure: bool
     session_ttl_seconds: int = Field(default=604800, gt=0)
     session_cookie_name: str = "gamja_session"
+
+    @field_validator("database_url", "migration_database_url")
+    @classmethod
+    def use_installed_postgres_driver(cls, url: str | None) -> str | None:
+        if url is None:
+            return None
+        if url.startswith("postgresql://"):
+            return "postgresql+psycopg://" + url[len("postgresql://") :]
+        if url.startswith("postgres://"):
+            return "postgresql+psycopg://" + url[len("postgres://") :]
+        return url
 
     @field_validator("auth_allowed_origins")
     @classmethod
@@ -44,6 +56,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_https_cookie_in_production(self) -> "Settings":
+        if self.migration_database_url is None:
+            self.migration_database_url = self.database_url
         if any(origin.startswith("https://") for origin in self.auth_allowed_origins) and not self.session_cookie_secure:
             raise ValueError("SESSION_COOKIE_SECURE must be true for HTTPS origins")
         return self
