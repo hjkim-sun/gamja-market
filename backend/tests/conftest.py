@@ -25,7 +25,16 @@ def clean_database() -> None:
 
     engine = create_engine(get_settings().database_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE app_private.auth_sessions, app_private.users CASCADE"))
+        # Keep the auth regression suite runnable during the RED stage, before
+        # migration 0002 creates purchase_requests. As soon as the table exists,
+        # it participates in the same per-test cleanup transaction.
+        has_purchase_requests = connection.scalar(
+            text("SELECT to_regclass('app_private.purchase_requests') IS NOT NULL")
+        )
+        tables = "app_private.auth_sessions, app_private.users"
+        if has_purchase_requests:
+            tables = f"app_private.purchase_requests, {tables}"
+        connection.execute(text(f"TRUNCATE {tables} CASCADE"))
     engine.dispose()
 
 

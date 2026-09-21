@@ -41,3 +41,40 @@ class AuthSession(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PurchaseRequest(Base):
+    __tablename__ = "purchase_requests"
+    __table_args__ = (
+        CheckConstraint("price_min >= 0 AND price_max >= price_min", name="ck_purchase_requests_price_range"),
+        CheckConstraint("price_max <= 1000000000", name="ck_purchase_requests_price_max_bound"),
+        CheckConstraint("status IN ('open', 'matched', 'closed')", name="ck_purchase_requests_status"),
+        CheckConstraint("condition IN ('any', 'new', 'like_new', 'used')", name="ck_purchase_requests_condition"),
+        CheckConstraint("char_length(btrim(title)) BETWEEN 2 AND 60", name="ck_purchase_requests_title_len"),
+        CheckConstraint(
+            "char_length(btrim(description)) BETWEEN 10 AND 1000",
+            name="ck_purchase_requests_description_len",
+        ),
+        CheckConstraint("updated_at >= created_at", name="ck_purchase_requests_updated_after_created"),
+        Index("ix_purchase_requests_created_at_id", text("created_at DESC"), text("id DESC")),
+        Index("ix_purchase_requests_buyer_id", "buyer_id"),
+        Index("ix_purchase_requests_category", "category"),
+        Index("ix_purchase_requests_status", "status"),
+        {"schema": "app_private"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    buyer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_private.users.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(60), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    condition: Mapped[str] = mapped_column(String(10), nullable=False)
+    price_min: Mapped[int] = mapped_column(nullable=False)
+    price_max: Mapped[int] = mapped_column(nullable=False)
+    region: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'open'"))
+    thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

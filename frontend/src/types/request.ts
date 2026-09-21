@@ -2,16 +2,22 @@ export type RequestStatus = 'open' | 'matched' | 'closed';
 
 export type ProductCondition = 'any' | 'new' | 'like_new' | 'used';
 
+/** 4단계 지원 API를 위해 타입만 남긴다. 이 단계는 이 타입의 데이터를 만들지 않는다. */
 export interface UserSummary {
   id: string;
   nickname: string;
   region: string;
 }
 
-export interface PurchaseRequest {
+/** 구매자 표시는 이메일 로컬파트 마스킹만 쓴다(설계서 3.2). */
+export interface RequestBuyer {
+  id: string;
+  maskedEmail: string;
+}
+
+export interface PurchaseRequestSummary {
   id: string;
   title: string;
-  description: string;
   category: string;
   condition: ProductCondition;
   priceMin: number;
@@ -19,11 +25,28 @@ export interface PurchaseRequest {
   region: string;
   status: RequestStatus;
   thumbnailUrl: string | null;
-  buyer: UserSummary;
   applicantCount: number;
   createdAt: string;
+  isOwner: boolean;
 }
 
+export interface PurchaseRequestDetail extends PurchaseRequestSummary {
+  description: string;
+  updatedAt: string;
+  buyer: RequestBuyer;
+}
+
+/** 컴포넌트 prop 타입으로 계속 쓰인다. */
+export type PurchaseRequest = PurchaseRequestDetail;
+
+export interface RequestListEnvelope {
+  items: PurchaseRequestSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** 4단계 지원 API를 위해 타입만 남긴다. 이 단계는 이 타입의 데이터를 만들지 않는다. */
 export interface Applicant {
   id: string;
   requestId: string;
@@ -31,4 +54,23 @@ export interface Applicant {
   offerPrice: number;
   message: string;
   createdAt: string;
+}
+
+export interface CreateRequestPayload {
+  title: string;
+  category: string;
+  description: string;
+  priceMin: number;
+  priceMax: number;
+  condition: ProductCondition;
+  region: string;
+}
+
+export interface ListRequestsParams {
+  q?: string;
+  category?: string;
+  status?: string;
+  sort?: 'latest' | 'price' | 'applicants';
+  page?: number;
+  pageSize?: number;
 }

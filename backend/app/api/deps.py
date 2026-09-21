@@ -12,7 +12,8 @@ from app.core.security import hash_session_token, utcnow
 from app.db.models import User
 from app.db.session import get_db
 from app.repositories.sessions import get_session_user
-from app.services.auth import ServiceUnavailable, remove_expired_session
+from app.services.auth import remove_expired_session
+from app.services.errors import ServiceUnavailable
 
 _SESSION_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
 
@@ -72,3 +73,23 @@ def get_current_user(
         expire_session_cookie(response, settings)
         raise ApiError(401, "UNAUTHENTICATED")
     return user
+
+
+def get_optional_user(
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> User | None:
+    """Return an authenticated viewer for public reads without mutating its cookie."""
+    token = request_session_token(request, settings)
+    if token is None:
+        return None
+    try:
+        record = get_session_user(db, hash_session_token(token))
+    except SQLAlchemyError:
+        db.rollback()
+        raise ApiError(503, "SERVICE_UNAVAILABLE") from None
+    if record is None:
+        return None
+    session, user = record
+    return user if session.expires_at > utcnow() else None

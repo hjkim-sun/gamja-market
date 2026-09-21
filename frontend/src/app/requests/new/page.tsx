@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { RequireAuth } from '@/features/auth/components/RequireAuth';
 import { RequestForm } from '@/features/requests/components/RequestForm';
 
 export const metadata: Metadata = {
@@ -15,7 +16,9 @@ export default function NewRequestPage() {
         <h1 className="mt-2 text-3xl font-black tracking-tight text-stone-950 sm:text-4xl">어떤 물건을 찾고 있나요?</h1>
         <p className="mt-3 text-base leading-7 text-stone-600">원하는 조건을 알려주면 판매자가 먼저 제안할 수 있어요.</p>
       </div>
-      <RequestForm />
+      <RequireAuth>
+        <RequestForm />
+      </RequireAuth>
     </div>
   );
 }

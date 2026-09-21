@@ -13,6 +13,7 @@ ERROR_MESSAGES = {
     "INVALID_ORIGIN": "허용되지 않은 요청 출처입니다.",
     "UNSUPPORTED_MEDIA_TYPE": "지원하지 않는 콘텐츠 형식입니다.",
     "SERVICE_UNAVAILABLE": "서비스를 일시적으로 사용할 수 없습니다.",
+    "NOT_FOUND": "요청을 찾을 수 없습니다.",
     "INTERNAL_ERROR": "서버 오류가 발생했습니다.",
 }
 
