@@ -1,8 +1,14 @@
 'use client';
 
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
+import { FormAlert } from '@/features/auth/components/FieldError';
+import { createRequest } from '@/lib/api/requests';
+import { requestCategories } from '@/features/requests/categories';
+import { ApiError } from '@/types/api';
 import type { ProductCondition } from '@/types/request';
 
 type FieldName =
@@ -15,8 +21,6 @@ type FieldName =
   | 'region';
 
 type FormErrors = Partial<Record<FieldName, string>>;
-
-const categories = ['디지털기기', '가전', '가구/인테리어', '의류', '도서', '기타'];
 
 const conditions: Array<{ value: ProductCondition; label: string; description: string }> = [
   { value: 'any', label: '상관없음', description: '어떤 상태든 제안받아요' },
@@ -38,14 +42,18 @@ function ErrorMessage({ id, message }: { id: string; message?: string }) {
 }
 
 export function RequestForm() {
+  const router = useRouter();
   const [errors, setErrors] = useState<FormErrors>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [formAlert, setFormAlert] = useState<string | null>(null);
+  const [reauthRequired, setReauthRequired] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSubmitted(false);
+    if (submitting) return;
 
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const title = String(data.get('title') ?? '').trim();
     const category = String(data.get('category') ?? '');
     const description = String(data.get('description') ?? '').trim();
@@ -53,7 +61,7 @@ export function RequestForm() {
     const priceMaxRaw = String(data.get('priceMax') ?? '');
     const priceMin = Number(priceMinRaw);
     const priceMax = Number(priceMaxRaw);
-    const condition = String(data.get('condition') ?? '');
+    const condition = String(data.get('condition') ?? '') as ProductCondition | '';
     const region = String(data.get('region') ?? '').trim();
     const nextErrors: FormErrors = {};
 
@@ -77,17 +85,54 @@ export function RequestForm() {
     if (!region) nextErrors.region = '거래 지역을 입력해 주세요.';
 
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length === 0) {
-      setSubmitted(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    setFormAlert(null);
+    setReauthRequired(false);
+
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setSubmitting(true);
+    try {
+      const created = await createRequest({
+        title,
+        category,
+        description,
+        priceMin,
+        priceMax,
+        condition: condition as ProductCondition,
+        region,
+      });
+      router.push(`/requests/${created.id}`);
+      router.refresh();
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        if (caught.code === 'VALIDATION_ERROR') {
+          const serverErrors = caught.fields as FormErrors;
+          setErrors(serverErrors);
+          if (Object.keys(serverErrors).length === 0) setFormAlert(caught.message);
+        } else if (caught.code === 'UNAUTHENTICATED') {
+          setReauthRequired(true);
+        } else if (caught.code === 'INVALID_ORIGIN') {
+          setFormAlert('요청을 처리할 수 없습니다. 새로고침 후 다시 시도해 주세요.');
+        } else {
+          setFormAlert('잠시 후 다시 시도해 주세요.');
+        }
+      } else {
+        setFormAlert('잠시 후 다시 시도해 주세요.');
+      }
+      setSubmitting(false);
     }
   }
 
   return (
     <form noValidate onSubmit={handleSubmit} className="space-y-8">
-      {submitted ? (
-        <div className="rounded-2xl border border-leaf-500/30 bg-leaf-50 p-4 text-sm font-semibold leading-6 text-leaf-700" role="status">
-          입력 내용이 모두 확인됐어요. 아직 저장 기능이 없습니다(3단계 예정).
+      <FormAlert message={formAlert} />
+
+      {reauthRequired ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700" role="alert">
+          다시 로그인해 주세요.{' '}
+          <Link href="/login?next=/requests/new" className="underline">
+            다시 로그인
+          </Link>
         </div>
       ) : null}
 
@@ -123,7 +168,7 @@ export function RequestForm() {
               className={inputClassName}
             >
               <option value="" disabled>카테고리를 선택하세요</option>
-              {categories.map((category) => <option key={category}>{category}</option>)}
+              {requestCategories.map((category) => <option key={category}>{category}</option>)}
             </select>
             <ErrorMessage id="category-error" message={errors.category} />
           </div>
@@ -239,10 +284,21 @@ export function RequestForm() {
       </section>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <Button type="reset" variant="secondary" className="sm:min-w-28" onClick={() => { setErrors({}); setSubmitted(false); }}>
+        <Button
+          type="reset"
+          variant="secondary"
+          className="sm:min-w-28"
+          onClick={() => {
+            setErrors({});
+            setFormAlert(null);
+            setReauthRequired(false);
+          }}
+        >
           초기화
         </Button>
-        <Button type="submit" className="sm:min-w-48">입력 내용 확인</Button>
+        <Button type="submit" disabled={submitting} className="sm:min-w-48">
+          {submitting ? '등록 중…' : '구매요청 등록'}
+        </Button>
       </div>
     </form>
   );

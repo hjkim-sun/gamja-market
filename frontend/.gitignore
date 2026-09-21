@@ -2,6 +2,7 @@ node_modules/
 .next/
 coverage/
 *.log
+*.tsbuildinfo
 .DS_Store
 
 # 실제 환경 값은 추적하지 않는다. .env.example만 커밋한다.
