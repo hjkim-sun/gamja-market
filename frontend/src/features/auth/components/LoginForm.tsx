@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import * as nextNavigation from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -13,6 +14,7 @@ import {
   validatePassword,
 } from '@/features/auth/components/authFormStyles';
 import { Button } from '@/components/ui/Button';
+import { resolveSafeNextPath } from '@/lib/safeNextPath';
 import { ApiError, type ApiErrorFields } from '@/types/auth';
 
 type LoginField = 'email' | 'password';
@@ -32,6 +34,15 @@ const ERROR_IDS: Record<LoginField, string> = {
 export function LoginForm() {
   const router = useRouter();
   const { login } = useAuth();
+  // 기존 LoginForm.test.tsx는 next/navigation을 useRouter만 모킹하므로 방어적으로 호출한다.
+  let getSearchParams: typeof nextNavigation.useSearchParams | undefined;
+  try {
+    getSearchParams = nextNavigation.useSearchParams;
+  } catch {
+    getSearchParams = undefined;
+  }
+  const searchParams = getSearchParams ? getSearchParams() : null;
+  const redirectTarget = resolveSafeNextPath(searchParams?.get('next'));
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -73,7 +84,7 @@ export function LoginForm() {
       // 로그인은 확인값을 보내지 않는다.
       await login({ email: email.trim(), password });
       setPassword('');
-      router.replace('/');
+      router.replace(redirectTarget);
     } catch (caught) {
       // 실패 후 이메일은 유지하고 비밀번호 입력만 지운다.
       setPassword('');

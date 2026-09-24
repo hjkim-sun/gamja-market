@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { formatDateTime, formatPriceRange } from '@/lib/format';
-import type { Applicant, ProductCondition, PurchaseRequest } from '@/types/request';
+import type { Applicant, ProductCondition, PurchaseRequestDetail } from '@/types/request';
 
 const conditionLabels: Record<ProductCondition, string> = {
   any: '상관없음',
@@ -13,7 +13,7 @@ const conditionLabels: Record<ProductCondition, string> = {
 };
 
 interface RequestDetailProps {
-  request: PurchaseRequest;
+  request: PurchaseRequestDetail;
   applicants: Applicant[];
 }
 
@@ -62,8 +62,7 @@ export function RequestDetail({ request, applicants }: RequestDetailProps) {
                   🥔
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate font-black text-stone-900">{request.buyer.nickname}</p>
-                  <p className="truncate text-sm text-stone-500">{request.buyer.region}</p>
+                  <p className="truncate font-black text-stone-900">{request.buyer.maskedEmail}</p>
                 </div>
               </div>
             </aside>

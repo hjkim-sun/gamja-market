@@ -4,7 +4,15 @@
   "services": {
     "frontend": {
       "root": "frontend/",
-      "framework": "nextjs"
+      "framework": "nextjs",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "backend",
+          "format": "url",
+          "env": "BACKEND_SERVICE_ORIGIN"
+        }
+      ]
     },
     "backend": {
       "root": "backend/",

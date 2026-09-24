@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { formatPriceRange, formatRelativeTime } from '@/lib/format';
-import type { PurchaseRequest } from '@/types/request';
+import type { PurchaseRequestSummary } from '@/types/request';
 
 const categoryEmoji: Record<string, string> = {
   디지털기기: '💻',
@@ -14,7 +14,7 @@ const categoryEmoji: Record<string, string> = {
 };
 
 interface RequestCardProps {
-  request: PurchaseRequest;
+  request: PurchaseRequestSummary;
 }
 
 export function RequestCard({ request }: RequestCardProps) {

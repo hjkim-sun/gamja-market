@@ -6,18 +6,20 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.auth import router as auth_router
+from app.api.requests import router as requests_router
 from app.api.deps import expire_session_cookie
 from app.core.config import get_settings
 from app.api.errors import ApiError, error_from_exception, error_response
 
 app = FastAPI(title="Gamja Market API")
 app.include_router(auth_router)
+app.include_router(requests_router)
 
 
 @app.middleware("http")
 async def auth_no_store(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith("/api/auth/"):
+    if request.url.path.startswith(("/api/auth/", "/api/requests")):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -31,15 +33,30 @@ async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
-    allowed = {"email", "password", "password_confirmation"}
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    request_fields = {
+        "title": "제목은 2자 이상 60자 이하로 입력해 주세요.",
+        "category": "카테고리를 선택해 주세요.",
+        "description": "원하는 스펙은 10자 이상 1000자 이하로 입력해 주세요.",
+        "priceMin": "최소가는 0원 이상으로 입력해 주세요.",
+        "priceMax": "최대가는 최소가보다 크거나 같아야 합니다.",
+        "condition": "희망 상태를 선택해 주세요.",
+        "region": "거래 지역을 입력해 주세요.",
+        "page": "입력값을 확인해 주세요.",
+        "pageSize": "입력값을 확인해 주세요.",
+        "q": "입력값을 확인해 주세요.",
+        "sort": "입력값을 확인해 주세요.",
+        "status": "입력값을 확인해 주세요.",
+    }
+    auth_fields = {"email": "입력값을 확인해 주세요.", "password": "입력값을 확인해 주세요.", "password_confirmation": "입력값을 확인해 주세요."}
+    allowed = request_fields if request.url.path.startswith("/api/requests") else auth_fields
     fields: dict[str, str] = {}
     # Never serialize Pydantic's input/context: they can contain password values.
     for error in exc.errors():
         location = error.get("loc", ())
         field = location[-1] if location else None
         if isinstance(field, str) and field in allowed and field not in fields:
-            fields[field] = "입력값을 확인해 주세요."
+            fields[field] = allowed[field]
     return error_response(422, "VALIDATION_ERROR", fields=fields)
 
 
