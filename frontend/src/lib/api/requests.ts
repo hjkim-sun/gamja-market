@@ -31,6 +31,7 @@ const ALLOWED_FIELD_KEYS = [
 interface RequestOpts {
   signal?: AbortSignal;
   baseUrl?: string;
+  cookie?: string;
 }
 
 function isRequestStatus(value: unknown): value is PurchaseRequestSummary['status'] {
@@ -150,7 +151,7 @@ export async function listRequests(
 ): Promise<RequestListEnvelope> {
   const response = await request(
     `${buildQuery(params)}`,
-    { method: 'GET', signal: opts.signal },
+    { method: 'GET', signal: opts.signal, headers: opts.cookie ? { Cookie: opts.cookie } : undefined },
     `${opts.baseUrl ?? ''}${REQUESTS_BASE}`,
   );
 
@@ -171,7 +172,7 @@ export async function listRequests(
 export async function getRequest(id: string, opts: RequestOpts = {}): Promise<PurchaseRequestDetail> {
   const response = await request(
     `/${id}`,
-    { method: 'GET', signal: opts.signal },
+    { method: 'GET', signal: opts.signal, headers: opts.cookie ? { Cookie: opts.cookie } : undefined },
     `${opts.baseUrl ?? ''}${REQUESTS_BASE}`,
   );
 

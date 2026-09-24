@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { headers } from 'next/headers';
 
 import { requestCategories } from '@/features/requests/categories';
 import { RequestBrowser } from '@/features/requests/components/RequestBrowser';
@@ -21,6 +22,7 @@ function firstValue(value: string | string[] | undefined): string | undefined {
 
 async function RequestBrowserSection({ searchParams }: HomePageProps) {
   const params = await searchParams;
+  const cookie = (await headers()).get('cookie') ?? undefined;
   const page = Number(firstValue(params.page) ?? '1');
 
   const { items, total, page: currentPage, pageSize } = await listRequests(
@@ -31,7 +33,7 @@ async function RequestBrowserSection({ searchParams }: HomePageProps) {
       sort: firstValue(params.sort) as 'latest' | 'price' | 'applicants' | undefined,
       page: Number.isFinite(page) && page > 0 ? page : 1,
     },
-    { baseUrl: resolveServerApiBase() },
+    { baseUrl: resolveServerApiBase(), cookie },
   );
 
   return (

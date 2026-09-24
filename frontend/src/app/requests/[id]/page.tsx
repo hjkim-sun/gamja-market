@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 
 import { RequestDetail } from '@/features/requests/components/RequestDetail';
@@ -15,7 +16,8 @@ interface RequestDetailPageProps {
 
 async function loadRequest(id: string) {
   try {
-    return await getRequest(id, { baseUrl: resolveServerApiBase() });
+    const cookie = (await headers()).get('cookie') ?? undefined;
+    return await getRequest(id, { baseUrl: resolveServerApiBase(), cookie });
   } catch (caught) {
     if (caught instanceof ApiError && caught.code === 'NOT_FOUND') return null;
     throw caught;

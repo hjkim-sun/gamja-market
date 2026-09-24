@@ -114,12 +114,13 @@ describe('구매요청 API 클라이언트', () => {
       jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 12 }),
     );
 
-    await requestsApi.listRequests({}, { baseUrl: 'http://backend:8000' });
+    await requestsApi.listRequests({}, { baseUrl: 'http://backend:8000', cookie: 'gamja_session=token' });
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe('http://backend:8000/api/requests');
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: 'GET',
       cache: 'no-store',
+      headers: { Cookie: 'gamja_session=token' },
     });
   });
 
