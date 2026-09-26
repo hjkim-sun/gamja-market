@@ -26,6 +26,7 @@ const detail = {
     id: '00000000-0000-4000-8000-000000000010',
     maskedEmail: 'bu***@example.com',
   },
+  photos: [],
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -107,6 +108,64 @@ describe('구매요청 API 클라이언트', () => {
       },
     });
     expect(JSON.parse(String(init.body))).toEqual(payload);
+  });
+
+  it('빈 photoIds는 레거시와 같은 JSON을 보내고 상세 photos 누락은 빈 배열로 보완한다', async () => {
+    const responseWithoutPhotos = { ...detail } as Record<string, unknown>;
+    delete responseWithoutPhotos.photos;
+    const fetchMock = stubFetch(async () => jsonResponse(201, responseWithoutPhotos));
+    const payload = {
+      title: detail.title,
+      category: detail.category,
+      description: detail.description,
+      priceMin: detail.priceMin,
+      priceMax: detail.priceMax,
+      condition: detail.condition,
+      region: detail.region,
+      photoIds: [],
+    };
+
+    const created = await requestsApi.createRequest(payload);
+
+    expect(created.photos).toEqual([]);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      title: detail.title,
+      category: detail.category,
+      description: detail.description,
+      priceMin: detail.priceMin,
+      priceMax: detail.priceMax,
+      condition: detail.condition,
+      region: detail.region,
+    });
+  });
+
+  it('안전하지 않은 이미지 URL은 노출하지 않고 안전한 URL만 보존한다', async () => {
+    const unsafe = {
+      ...detail,
+      thumbnailUrl: 'javascript:alert(1)',
+      photos: [
+        { id: 'safe-relative', url: '/api/request-photos/files/00000000-0000-4000-8000-000000000001.jpg' },
+        { id: 'safe-https', url: 'https://cdn.example.com/safe.jpg' },
+        { id: 'data', url: 'data:image/png;base64,evil' },
+        { id: 'scheme-relative', url: '//evil.example/photo.jpg' },
+      ],
+    };
+    stubFetch(async () => jsonResponse(200, unsafe));
+
+    const parsed = await requestsApi.getRequest(detail.id);
+
+    expect(parsed.thumbnailUrl).toBeNull();
+    expect(parsed.photos).toEqual(unsafe.photos.slice(0, 2));
+  });
+
+  it('photos 배열 항목의 계약이 깨지면 INTERNAL_ERROR를 던진다', async () => {
+    stubFetch(async () => jsonResponse(200, { ...detail, photos: [{ id: 123, url: false }] }));
+
+    const caught = await requestsApi.getRequest(detail.id).catch((error: unknown) => error);
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect((caught as ApiError).code).toBe('INTERNAL_ERROR');
   });
 
   it('서버 컴포넌트는 명시한 backend base URL로 공개 GET을 보낸다', async () => {
@@ -213,5 +272,16 @@ describe('구매요청 API 클라이언트', () => {
   it('수정·삭제 API를 export하지 않는다', () => {
     expect('updateRequest' in requestsApi).toBe(false);
     expect('deleteRequest' in requestsApi).toBe(false);
+  });
+
+  it.each([
+    '//example.com/image.jpg',
+    'https://example.com/\\image.jpg',
+    'https://example.com/\nimage.jpg',
+    '/api/request-photos/files/../../auth/me',
+    '/api/request-photos/files/%2e%2e/auth/me',
+    'javascript:alert(1)',
+  ])('안전하지 않은 사진 URL을 거부한다: %s', (url) => {
+    expect(requestsApi.isSafeImageUrl(url)).toBe(false);
   });
 });

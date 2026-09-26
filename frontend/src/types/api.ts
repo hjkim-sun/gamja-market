@@ -13,7 +13,11 @@ export type ApiErrorCode =
   | 'NETWORK_ERROR'
   | 'SELF_APPLICATION_FORBIDDEN'
   | 'REQUEST_NOT_OPEN'
-  | 'ALREADY_APPLIED';
+  | 'ALREADY_APPLIED'
+  | 'PAYLOAD_TOO_LARGE'
+  | 'INVALID_IMAGE'
+  | 'PHOTO_LIMIT_EXCEEDED'
+  | 'PHOTO_STORAGE_UNAVAILABLE';
 
 export type ApiErrorFields = Partial<Record<string, string>>;
 

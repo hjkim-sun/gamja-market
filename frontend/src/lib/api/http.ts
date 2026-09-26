@@ -18,6 +18,10 @@ const KNOWN_ERROR_CODES: readonly ApiErrorCode[] = [
   'SELF_APPLICATION_FORBIDDEN',
   'REQUEST_NOT_OPEN',
   'ALREADY_APPLIED',
+  'PAYLOAD_TOO_LARGE',
+  'INVALID_IMAGE',
+  'PHOTO_LIMIT_EXCEEDED',
+  'PHOTO_STORAGE_UNAVAILABLE',
 ];
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

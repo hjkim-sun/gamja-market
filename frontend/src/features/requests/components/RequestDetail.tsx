@@ -1,5 +1,6 @@
 import { ApplicantList } from '@/features/requests/components/ApplicantList';
 import { ApplyPanel } from '@/features/applications/components/ApplyPanel';
+import { RequestPhotoGallery } from '@/features/requests/components/RequestPhotoGallery';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { formatDateTime, formatPriceRange } from '@/lib/format';
@@ -36,6 +37,8 @@ export function RequestDetail({ request, applications, viewerRole, applicantCoun
         <h1 className="max-w-4xl break-keep text-3xl font-black leading-tight tracking-tight text-stone-950 sm:text-4xl">
           {request.title}
         </h1>
+
+        <RequestPhotoGallery photos={request.photos} title={request.title} />
 
         <Card className="mt-8 overflow-hidden">
           <div className="border-b border-potato-200 bg-potato-50 p-6 sm:p-8">

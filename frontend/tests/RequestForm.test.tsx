@@ -27,6 +27,7 @@ const detail = {
   updatedAt: '2026-09-21T08:30:00+00:00',
   isOwner: true,
   buyer: { id: 'user-1', maskedEmail: 'bu***@example.com' },
+  photos: [],
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -190,8 +191,11 @@ describe('RequestForm', () => {
     expect(screen.getByRole('textbox', { name: /원하는 스펙/ })).toHaveValue(detail.description);
   });
 
-  it('사진 업로드는 계속 비활성 상태다', () => {
+  it('사진 선택기는 최대 5장과 허용 형식을 안내한다', () => {
     render(<RequestForm />);
-    expect(screen.getByRole('button', { name: '사진 업로드 · 5단계에서 지원' })).toBeDisabled();
+    expect(screen.getByText(/JPG·PNG·WEBP 정지 이미지/)).toBeInTheDocument();
+    expect(screen.getByText(/장당 3MB/)).toBeInTheDocument();
+    expect(screen.getByText(/첫 번째 사진이 대표 사진/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/사진 추가/)).toHaveAttribute('type', 'file');
   });
 });

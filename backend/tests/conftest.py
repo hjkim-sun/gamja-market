@@ -4,10 +4,11 @@ import itertools
 import os
 import secrets
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 import pytest
 from alembic import command
@@ -63,6 +64,8 @@ def _alembic_config() -> Config:
 
 def _explicit_migration_target(config: Config) -> str:
     known = {revision.revision for revision in ScriptDirectory.from_config(config).walk_revisions()}
+    if "0004_request_photos" in known:
+        return "0004_request_photos"
     # The RED owner runs before 0003 exists. Never use head/heads: advance only to
     # the latest revision explicitly known to this approved feature sequence.
     if "0003_seller_applications" in known:
@@ -107,6 +110,16 @@ def run_ns() -> str:
 @pytest.fixture
 def test_ns(run_ns: str) -> str:
     return f"{run_ns}t{next(_test_counter):04x}"
+
+
+@pytest.fixture
+def run_tag() -> str:
+    return f"t{uuid4().hex[:10]}"
+
+
+@pytest.fixture
+def unique_email(run_tag: str) -> Callable[[str], str]:
+    return lambda prefix="buyer": f"{prefix}-{run_tag}@example.com"
 
 
 def ns_email(test_ns: str, label: str) -> str:
@@ -196,3 +209,23 @@ def post_headers() -> dict[str, str]:
         "X-Requested-With": "gamja-market",
         "Content-Type": "application/json",
     }
+
+
+@pytest.fixture
+def upload_headers(post_headers: dict[str, str]) -> dict[str, str]:
+    return {**post_headers, "Content-Type": "image/jpeg"}
+
+
+@pytest.fixture
+def photo_storage():
+    """Keep photo endpoint tests local; never contact Supabase from the test suite."""
+    from app.api.deps import get_photo_storage
+    from app.main import app
+    from tests.support.fake_storage import FakePhotoStorage
+
+    storage = FakePhotoStorage()
+    app.dependency_overrides[get_photo_storage] = lambda: storage
+    try:
+        yield storage
+    finally:
+        app.dependency_overrides.pop(get_photo_storage, None)

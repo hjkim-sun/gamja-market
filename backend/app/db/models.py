@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -91,6 +92,28 @@ class PurchaseRequest(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+class PurchaseRequestPhoto(Base):
+    __tablename__ = "purchase_request_photos"
+    __table_args__ = ({"schema": "app_private"},)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    uploader_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("app_private.users.id", ondelete="CASCADE"), nullable=False)
+    request_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("app_private.purchase_requests.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    storage_backend: Mapped[str] = mapped_column(String(10), nullable=False)
+    storage_bucket: Mapped[str | None] = mapped_column(String(63))
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    sort_order: Mapped[int | None] = mapped_column(SmallInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    object_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SellerApplication(Base):

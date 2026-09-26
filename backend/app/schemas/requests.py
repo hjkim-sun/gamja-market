@@ -38,6 +38,7 @@ class PurchaseRequestCreate(RequestSchema):
     price_max: StrictInt = Field(ge=0, le=1_000_000_000)
     condition: RequestCondition
     region: StrictStr = Field(min_length=1, max_length=50)
+    photo_ids: list[UUID] = Field(default_factory=list, max_length=5)
 
     _title = field_validator("title", mode="before")(_trim_string)
     _description = field_validator("description", mode="before")(_trim_string)
@@ -49,6 +50,13 @@ class PurchaseRequestCreate(RequestSchema):
         price_min = info.data.get("price_min")
         if isinstance(price_min, int) and value < price_min:
             raise ValueError("priceMax must be greater than or equal to priceMin")
+        return value
+
+    @field_validator("photo_ids")
+    @classmethod
+    def validate_photo_ids(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("photoIds must be unique")
         return value
 
 
@@ -97,6 +105,12 @@ class PurchaseRequestDetail(PurchaseRequestSummary):
     description: str
     updated_at: datetime
     buyer: RequestBuyer
+    photos: list["RequestPhoto"] = Field(default_factory=list)
+
+
+class RequestPhoto(RequestSchema):
+    id: UUID
+    url: str
 
 
 class PurchaseRequestListResponse(RequestSchema):

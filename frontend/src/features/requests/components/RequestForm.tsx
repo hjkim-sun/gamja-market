@@ -6,8 +6,10 @@ import { FormEvent, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { FormAlert } from '@/features/auth/components/FieldError';
+import { deleteRequestPhoto } from '@/lib/api/requestPhotos';
 import { createRequest } from '@/lib/api/requests';
 import { requestCategories } from '@/features/requests/categories';
+import { PhotoPicker, type PhotoPickerSummary } from '@/features/requests/components/PhotoPicker';
 import { ApiError } from '@/types/api';
 import type { ProductCondition } from '@/types/request';
 
@@ -18,7 +20,8 @@ type FieldName =
   | 'priceMin'
   | 'priceMax'
   | 'condition'
-  | 'region';
+  | 'region'
+  | 'photos';
 
 type FormErrors = Partial<Record<FieldName, string>>;
 
@@ -41,12 +44,16 @@ function ErrorMessage({ id, message }: { id: string; message?: string }) {
   );
 }
 
+const initialPhotoSummary: PhotoPickerSummary = { uploadedIds: [], pendingCount: 0, failedCount: 0 };
+
 export function RequestForm() {
   const router = useRouter();
   const [errors, setErrors] = useState<FormErrors>({});
   const [formAlert, setFormAlert] = useState<string | null>(null);
   const [reauthRequired, setReauthRequired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [photoSummary, setPhotoSummary] = useState<PhotoPickerSummary>(initialPhotoSummary);
+  const [photoPickerResetKey, setPhotoPickerResetKey] = useState(0);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,12 +90,18 @@ export function RequestForm() {
     }
     if (!condition) nextErrors.condition = '희망 상태를 선택해 주세요.';
     if (!region) nextErrors.region = '거래 지역을 입력해 주세요.';
+    if (photoSummary.failedCount > 0) {
+      nextErrors.photos = '업로드에 실패한 사진을 다시 시도하거나 삭제해 주세요.';
+    }
 
     setErrors(nextErrors);
     setFormAlert(null);
     setReauthRequired(false);
 
     if (Object.keys(nextErrors).length > 0) return;
+    // 버튼 disabled는 UI 힌트일 뿐이다. 트리거된 제출 이벤트(예: Enter 키 제출, 경합 중
+    // 재렌더 이전의 클릭)가 버튼 상태를 우회할 수 있으므로 여기서도 다시 막는다.
+    if (photoSummary.pendingCount > 0) return;
 
     setSubmitting(true);
     try {
@@ -100,13 +113,21 @@ export function RequestForm() {
         priceMax,
         condition: condition as ProductCondition,
         region,
+        photoIds: photoSummary.uploadedIds,
       });
       router.push(`/requests/${created.id}`);
       router.refresh();
     } catch (caught) {
       if (caught instanceof ApiError) {
         if (caught.code === 'VALIDATION_ERROR') {
-          const serverErrors = caught.fields as FormErrors;
+          const { photoIds: photosMessage, ...rest } = caught.fields;
+          const serverErrors: FormErrors = { ...rest };
+          if (photosMessage) {
+            serverErrors.photos = photosMessage;
+            // 만료·재사용된 사진은 되살릴 수 없으므로 항목을 모두 비운다(설계서 7.3).
+            setPhotoPickerResetKey((key) => key + 1);
+            setPhotoSummary(initialPhotoSummary);
+          }
           setErrors(serverErrors);
           if (Object.keys(serverErrors).length === 0) setFormAlert(caught.message);
         } else if (caught.code === 'UNAUTHENTICATED') {
@@ -121,6 +142,19 @@ export function RequestForm() {
       }
       setSubmitting(false);
     }
+  }
+
+  function handleReset() {
+    if (submitting) return;
+    setErrors({});
+    setFormAlert(null);
+    setReauthRequired(false);
+    // 이미 업로드된 사진은 fire-and-forget으로 폐기하고, PhotoPicker는 key를 바꿔 새로 마운트한다.
+    for (const id of photoSummary.uploadedIds) {
+      deleteRequestPhoto(id).catch(() => {});
+    }
+    setPhotoPickerResetKey((key) => key + 1);
+    setPhotoSummary(initialPhotoSummary);
   }
 
   return (
@@ -269,34 +303,30 @@ export function RequestForm() {
           </div>
 
           <div>
-            <span className="text-sm font-bold text-stone-700">사진</span>
-            <button
-              type="button"
-              disabled
-              title="사진 업로드는 5단계에서 지원합니다"
-              className="mt-2 flex min-h-28 w-full cursor-not-allowed flex-col items-center justify-center rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 text-center text-sm text-stone-400"
-            >
-              <span className="text-2xl" aria-hidden="true">📷</span>
-              <span className="mt-2 font-semibold">사진 업로드 · 5단계에서 지원</span>
-            </button>
+            <PhotoPicker
+              key={photoPickerResetKey}
+              onChange={setPhotoSummary}
+              disabled={submitting}
+            />
+            <ErrorMessage id="photos-error" message={errors.photos} />
           </div>
         </div>
       </section>
 
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <Button
-          type="reset"
-          variant="secondary"
-          className="sm:min-w-28"
-          onClick={() => {
-            setErrors({});
-            setFormAlert(null);
-            setReauthRequired(false);
-          }}
-        >
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+        {photoSummary.pendingCount > 0 ? (
+          <p className="text-sm font-semibold text-stone-500 sm:mr-auto">
+            사진 업로드가 끝나면 등록할 수 있어요.
+          </p>
+        ) : null}
+        <Button type="reset" disabled={submitting} variant="secondary" className="sm:min-w-28" onClick={handleReset}>
           초기화
         </Button>
-        <Button type="submit" disabled={submitting} className="sm:min-w-48">
+        <Button
+          type="submit"
+          disabled={submitting || photoSummary.pendingCount > 0}
+          className="sm:min-w-48"
+        >
           {submitting ? '등록 중…' : '구매요청 등록'}
         </Button>
       </div>
