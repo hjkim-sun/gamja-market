@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { HeaderAuth } from '@/features/auth/components/HeaderAuth';
 
+const { routerRefresh } = vi.hoisted(() => ({ routerRefresh: vi.fn() }));
+
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: routerRefresh }),
 }));
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -35,6 +37,7 @@ function renderHeader() {
 describe('HeaderAuth', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    routerRefresh.mockReset();
   });
 
   it('/me 401이면 로그인·회원가입 링크를 보여준다', async () => {
@@ -95,6 +98,7 @@ describe('HeaderAuth', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: '로그인' })).toBeInTheDocument());
     const logoutCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith('/logout'));
     expect(logoutCall).toBeDefined();
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('로그아웃 실패 시 인증 상태를 유지하고 재시도 안내를 보여준다', async () => {

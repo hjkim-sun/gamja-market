@@ -6,6 +6,14 @@ export function formatPrice(price: number): string {
   return `${price.toLocaleString('ko-KR')}원`;
 }
 
+/**
+ * 지원 제시가는 흥정 금액이라 만원 단위 축약(formatPrice) 없이 정확한 금액을 보여준다
+ * (설계서 6.1의 offerPrice, F11/F14).
+ */
+export function formatExactWon(price: number): string {
+  return `${price.toLocaleString('ko-KR')}원`;
+}
+
 export function formatPriceRange(min: number, max: number): string {
   if (min === max) {
     return formatPrice(min);

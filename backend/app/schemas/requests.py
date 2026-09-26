@@ -83,7 +83,7 @@ class PurchaseRequestSummary(RequestSchema):
     region: str
     status: RequestStatus
     thumbnail_url: str | None
-    applicant_count: Literal[0] = 0
+    applicant_count: int = Field(default=0, ge=0)
     created_at: datetime
     is_owner: bool
 

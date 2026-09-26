@@ -15,6 +15,9 @@ const KNOWN_ERROR_CODES: readonly ApiErrorCode[] = [
   'NOT_FOUND',
   'INTERNAL_ERROR',
   'NETWORK_ERROR',
+  'SELF_APPLICATION_FORBIDDEN',
+  'REQUEST_NOT_OPEN',
+  'ALREADY_APPLIED',
 ];
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
