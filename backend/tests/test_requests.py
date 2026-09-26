@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import io
 import logging
 import uuid
 from collections.abc import Iterator
@@ -14,6 +15,8 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+from conftest import ALEMBIC_INI, ns_email, ns_title
 
 
 REQUEST_PATH = "/api/requests"
@@ -34,7 +37,7 @@ EXPECTED_INDEXES = {
 }
 
 
-def signup_payload(email: str = "buyer@example.com") -> dict[str, str]:
+def signup_payload(email: str) -> dict[str, str]:
     return {
         "email": email,
         "password": "potato-pass-123",
@@ -66,7 +69,9 @@ def assert_error(response, status: int, code: str, field: str | None = None) -> 
         assert field in body["fields"]
 
 
-def signup(client: TestClient, post_headers: dict[str, str], email: str = "buyer@example.com"):
+def signup(client: TestClient, post_headers: dict[str, str], email: str | None = None):
+    if email is None:
+        email = ns_email(client.test_ns, "buyer")
     response = client.post("/api/auth/signup", headers=post_headers, json=signup_payload(email))
     assert response.status_code == 201
     return response
@@ -77,6 +82,10 @@ def create_request(
     post_headers: dict[str, str],
     **overrides: object,
 ) -> dict[str, Any]:
+    title = str(overrides.pop("title", "아이패드 프로를 구합니다"))
+    if not title.startswith(f"[{client.test_ns}]"):
+        title = ns_title(client.test_ns, title)
+    overrides["title"] = title
     response = client.post(REQUEST_PATH, headers=post_headers, json=request_payload(**overrides))
     assert response.status_code == 201, response.text
     return response.json()
@@ -88,22 +97,28 @@ def database_engine():
     return create_engine(get_settings().database_url)
 
 
-def test_create_request_persists_and_returns_detail(client, post_headers) -> None:
+def test_create_request_persists_and_returns_detail(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
+    title = ns_title(test_ns, "아이패드 프로를 구합니다")
+    buyer_email = ns_email(test_ns, "buyer")
+    buyer_local, _, buyer_domain = buyer_email.partition("@")
+    masked_buyer_email = f"{buyer_local[:2]}{'*' * (len(buyer_local) - 2)}@{buyer_domain}"
 
-    response = client.post(REQUEST_PATH, headers=post_headers, json=request_payload())
+    response = client.post(
+        REQUEST_PATH, headers=post_headers, json=request_payload(title=title)
+    )
 
     assert response.status_code == 201
     assert response.headers["cache-control"] == "no-store"
     body = response.json()
     assert {"description", "buyer", "updatedAt"} <= body.keys()
-    assert body["title"] == "아이패드 프로를 구합니다"
+    assert body["title"] == title
     assert body["description"] == request_payload()["description"]
     assert body["status"] == "open"
     assert body["applicantCount"] == 0
     assert body["thumbnailUrl"] is None
     assert body["isOwner"] is True
-    assert body["buyer"]["maskedEmail"] == "bu***@example.com"
+    assert body["buyer"]["maskedEmail"] == masked_buyer_email
     uuid.UUID(body["id"])
 
     engine = database_engine()
@@ -122,13 +137,19 @@ def test_create_request_persists_and_returns_detail(client, post_headers) -> Non
     engine.dispose()
 
 
-def test_create_request_requires_authentication(client, post_headers) -> None:
-    response = client.post(REQUEST_PATH, headers=post_headers, json=request_payload())
+def test_create_request_requires_authentication(client, post_headers, test_ns) -> None:
+    title = ns_title(test_ns, "인증 없는 요청")
+    response = client.post(
+        REQUEST_PATH, headers=post_headers, json=request_payload(title=title)
+    )
     assert_error(response, 401, "UNAUTHENTICATED")
 
     engine = database_engine()
     with engine.connect() as connection:
-        assert connection.scalar(text("SELECT count(*) FROM app_private.purchase_requests")) == 0
+        assert connection.scalar(
+            text("SELECT count(*) FROM app_private.purchase_requests WHERE title = :title"),
+            {"title": title},
+        ) == 0
     engine.dispose()
 
 
@@ -232,19 +253,20 @@ def test_create_request_requires_every_input_field(client, post_headers, field) 
     assert_error(response, 422, "VALIDATION_ERROR", field)
 
 
-def test_create_request_trims_strings(client, post_headers) -> None:
+def test_create_request_trims_strings(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
+    title = ns_title(test_ns, "아이패드 프로")
     response = client.post(
         REQUEST_PATH,
         headers=post_headers,
         json=request_payload(
-            title="  아이패드 프로  ",
+            title=f"  {title}  ",
             description="  충분히 자세한 제품 설명입니다.  ",
             region="  서울 마포구  ",
         ),
     )
     assert response.status_code == 201
-    assert response.json()["title"] == "아이패드 프로"
+    assert response.json()["title"] == title
     assert response.json()["description"] == "충분히 자세한 제품 설명입니다."
     assert response.json()["region"] == "서울 마포구"
 
@@ -258,14 +280,14 @@ def test_create_request_trims_strings(client, post_headers) -> None:
             {"id": response.json()["id"]},
         ).mappings().one()
         assert dict(stored) == {
-            "title": "아이패드 프로",
+            "title": title,
             "description": "충분히 자세한 제품 설명입니다.",
             "region": "서울 마포구",
         }
     engine.dispose()
 
 
-def test_list_requests_is_public_and_paginated(client, post_headers) -> None:
+def test_list_requests_is_public_and_paginated(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
     created_ids = {
         create_request(client, post_headers, title=f"구매요청 {index:02d}")["id"]
@@ -273,8 +295,8 @@ def test_list_requests_is_public_and_paginated(client, post_headers) -> None:
     }
     client.cookies.clear()
 
-    first = client.get(REQUEST_PATH)
-    second = client.get(REQUEST_PATH, params={"page": 2})
+    first = client.get(REQUEST_PATH, params={"q": test_ns})
+    second = client.get(REQUEST_PATH, params={"q": test_ns, "page": 2})
 
     assert first.status_code == 200
     assert first.json()["total"] == 15
@@ -288,44 +310,54 @@ def test_list_requests_is_public_and_paginated(client, post_headers) -> None:
     assert all("description" not in item and "buyer" not in item for item in first.json()["items"])
 
 
-def test_list_requests_filters_by_category_status_and_query(client, post_headers) -> None:
+def test_list_requests_filters_by_category_status_and_query(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
     create_request(client, post_headers, title="iPad Pro를 구합니다", category="디지털기기")
     create_request(client, post_headers, title="IPAD mini를 찾습니다", category="디지털기기")
     create_request(client, post_headers, title="로봇 청소기를 구합니다", category="가전")
     client.cookies.clear()
 
-    category = client.get(REQUEST_PATH, params={"category": "가전"}).json()
-    query = client.get(REQUEST_PATH, params={"q": "ipad"}).json()
+    category = client.get(
+        REQUEST_PATH, params={"category": "가전", "q": test_ns}
+    ).json()
+    query = client.get(REQUEST_PATH, params={"q": f"{test_ns}] ipad"}).json()
     combined = client.get(
         REQUEST_PATH,
-        params={"category": "디지털기기", "status": "open", "q": "mini"},
+        params={"category": "디지털기기", "status": "open", "q": f"{test_ns}] ipad mini"},
     ).json()
 
-    assert [item["title"] for item in category["items"]] == ["로봇 청소기를 구합니다"]
+    assert [item["title"] for item in category["items"]] == [
+        ns_title(test_ns, "로봇 청소기를 구합니다")
+    ]
     assert {item["title"] for item in query["items"]} == {
-        "iPad Pro를 구합니다",
-        "IPAD mini를 찾습니다",
+        ns_title(test_ns, "iPad Pro를 구합니다"),
+        ns_title(test_ns, "IPAD mini를 찾습니다"),
     }
-    assert [item["title"] for item in combined["items"]] == ["IPAD mini를 찾습니다"]
+    assert [item["title"] for item in combined["items"]] == [
+        ns_title(test_ns, "IPAD mini를 찾습니다")
+    ]
     assert combined["total"] == 1
 
 
-def test_list_query_escapes_like_wildcards(client, post_headers) -> None:
+def test_list_query_escapes_like_wildcards(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
     create_request(client, post_headers, title="100% 확실한 거래")
     create_request(client, post_headers, title="under_score 모델")
     create_request(client, post_headers, title="평범한 제목입니다")
     client.cookies.clear()
 
-    percent = client.get(REQUEST_PATH, params={"q": "%"}).json()
-    underscore = client.get(REQUEST_PATH, params={"q": "_"}).json()
+    percent = client.get(REQUEST_PATH, params={"q": f"{test_ns}] 100%"}).json()
+    underscore = client.get(REQUEST_PATH, params={"q": f"{test_ns}] under_"}).json()
 
-    assert [item["title"] for item in percent["items"]] == ["100% 확실한 거래"]
-    assert [item["title"] for item in underscore["items"]] == ["under_score 모델"]
+    assert [item["title"] for item in percent["items"]] == [
+        ns_title(test_ns, "100% 확실한 거래")
+    ]
+    assert [item["title"] for item in underscore["items"]] == [
+        ns_title(test_ns, "under_score 모델")
+    ]
 
 
-def test_list_requests_sorting(client, post_headers) -> None:
+def test_list_requests_sorting(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
     low = create_request(
         client, post_headers, title="낮은 가격 요청", priceMin=100_000, priceMax=200_000
@@ -354,9 +386,9 @@ def test_list_requests_sorting(client, post_headers) -> None:
     engine.dispose()
     client.cookies.clear()
 
-    latest = client.get(REQUEST_PATH, params={"sort": "latest"})
-    price = client.get(REQUEST_PATH, params={"sort": "price"})
-    applicants = client.get(REQUEST_PATH, params={"sort": "applicants"})
+    latest = client.get(REQUEST_PATH, params={"sort": "latest", "q": test_ns})
+    price = client.get(REQUEST_PATH, params={"sort": "price", "q": test_ns})
+    applicants = client.get(REQUEST_PATH, params={"sort": "applicants", "q": test_ns})
 
     assert [item["id"] for item in latest.json()["items"]] == [middle["id"], high["id"], low["id"]]
     assert [item["id"] for item in price.json()["items"]] == [high["id"], middle["id"], low["id"]]
@@ -364,7 +396,7 @@ def test_list_requests_sorting(client, post_headers) -> None:
     assert [item["id"] for item in applicants.json()["items"]] == [middle["id"], high["id"], low["id"]]
 
 
-def test_list_requests_pagination_is_stable(client, post_headers) -> None:
+def test_list_requests_pagination_is_stable(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
     created = [create_request(client, post_headers, title=f"동시 요청 {index}") for index in range(5)]
     engine = database_engine()
@@ -372,15 +404,21 @@ def test_list_requests_pagination_is_stable(client, post_headers) -> None:
         connection.execute(
             text(
                 "UPDATE app_private.purchase_requests "
-                "SET created_at=:created_at, updated_at=:created_at"
+                "SET created_at=:created_at, updated_at=:created_at "
+                "WHERE id = ANY(:request_ids)"
             ),
-            {"created_at": datetime(2026, 9, 21, tzinfo=timezone.utc)},
+            {
+                "created_at": datetime(2026, 9, 21, tzinfo=timezone.utc),
+                "request_ids": [item["id"] for item in created],
+            },
         )
     engine.dispose()
     client.cookies.clear()
 
     pages = [
-        client.get(REQUEST_PATH, params={"page": page, "pageSize": 2}).json()["items"]
+        client.get(
+            REQUEST_PATH, params={"q": test_ns, "page": page, "pageSize": 2}
+        ).json()["items"]
         for page in (1, 2, 3)
     ]
     returned = [item["id"] for page in pages for item in page]
@@ -405,15 +443,15 @@ def test_list_requests_rejects_invalid_filter_values(client, params) -> None:
     assert_error(client.get(REQUEST_PATH, params=params), 422, "VALIDATION_ERROR")
 
 
-def test_list_requests_falls_back_on_unknown_sort_and_status(client, post_headers) -> None:
+def test_list_requests_falls_back_on_unknown_sort_and_status(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
     create_request(client, post_headers, title="첫 번째 요청")
     create_request(client, post_headers, title="두 번째 요청")
     client.cookies.clear()
 
-    latest = client.get(REQUEST_PATH).json()
-    unknown_sort = client.get(REQUEST_PATH, params={"sort": "bogus"})
-    unknown_status = client.get(REQUEST_PATH, params={"status": "bogus"})
+    latest = client.get(REQUEST_PATH, params={"q": test_ns}).json()
+    unknown_sort = client.get(REQUEST_PATH, params={"q": test_ns, "sort": "bogus"})
+    unknown_status = client.get(REQUEST_PATH, params={"q": test_ns, "status": "bogus"})
 
     assert unknown_sort.status_code == 200
     assert unknown_status.status_code == 200
@@ -421,10 +459,10 @@ def test_list_requests_falls_back_on_unknown_sort_and_status(client, post_header
     assert unknown_status.json()["total"] == 2
 
 
-def test_public_reads_ignore_an_invalid_session_cookie(client) -> None:
+def test_public_reads_ignore_an_invalid_session_cookie(client, test_ns) -> None:
     client.cookies.set("gamja_session", "x" * 43)
 
-    listed = client.get(REQUEST_PATH)
+    listed = client.get(REQUEST_PATH, params={"q": test_ns})
     missing = client.get(f"{REQUEST_PATH}/{uuid.uuid4()}")
 
     assert listed.status_code == 200
@@ -432,30 +470,32 @@ def test_public_reads_ignore_an_invalid_session_cookie(client) -> None:
     assert_error(missing, 404, "NOT_FOUND")
 
 
-def test_list_and_detail_expose_is_owner_by_session(client, post_headers) -> None:
-    signup(client, post_headers, "owner@example.com")
+def test_list_and_detail_expose_is_owner_by_session(client, post_headers, test_ns) -> None:
+    signup(client, post_headers, ns_email(test_ns, "owner"))
     created = create_request(client, post_headers)
 
-    owner_list = client.get(REQUEST_PATH).json()
+    owner_list = client.get(REQUEST_PATH, params={"q": test_ns}).json()
     owner_detail = client.get(f"{REQUEST_PATH}/{created['id']}").json()
     assert owner_list["items"][0]["isOwner"] is True
     assert owner_detail["isOwner"] is True
 
     client.cookies.clear()
-    signup(client, post_headers, "other@example.com")
-    assert client.get(REQUEST_PATH).json()["items"][0]["isOwner"] is False
+    signup(client, post_headers, ns_email(test_ns, "other"))
+    assert client.get(REQUEST_PATH, params={"q": test_ns}).json()["items"][0]["isOwner"] is False
     assert client.get(f"{REQUEST_PATH}/{created['id']}").json()["isOwner"] is False
 
     client.cookies.clear()
-    assert client.get(REQUEST_PATH).json()["items"][0]["isOwner"] is False
+    assert client.get(REQUEST_PATH, params={"q": test_ns}).json()["items"][0]["isOwner"] is False
     assert client.get(f"{REQUEST_PATH}/{created['id']}").json()["isOwner"] is False
 
 
-@pytest.mark.parametrize(
-    ("email", "masked"),
-    [("buyer@example.com", "bu***@example.com"), ("a@example.com", "a*@example.com")],
-)
-def test_detail_returns_masked_buyer_email_only(client, post_headers, email, masked) -> None:
+@pytest.mark.parametrize("label", ["buyer", "a"])
+def test_detail_returns_masked_buyer_email_only(
+    client, post_headers, test_ns, label
+) -> None:
+    email = ns_email(test_ns, label)
+    local, _, domain = email.partition("@")
+    masked = f"{local[:2]}{'*' * (len(local) - 2)}@{domain}"
     signup(client, post_headers, email)
     created = create_request(client, post_headers)
     client.cookies.clear()
@@ -492,10 +532,14 @@ def test_patch_and_delete_are_not_implemented(client) -> None:
     assert client.delete(f"{REQUEST_PATH}/{request_id}").status_code == 405
 
 
-def test_request_endpoints_set_no_store(client, post_headers) -> None:
+def test_request_endpoints_set_no_store(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
-    created = client.post(REQUEST_PATH, headers=post_headers, json=request_payload())
-    listed = client.get(REQUEST_PATH)
+    created = client.post(
+        REQUEST_PATH,
+        headers=post_headers,
+        json=request_payload(title=ns_title(test_ns, "캐시 금지 요청")),
+    )
+    listed = client.get(REQUEST_PATH, params={"q": test_ns})
     detailed = client.get(f"{REQUEST_PATH}/{created.json()['id']}")
 
     assert created.status_code == 201
@@ -506,21 +550,24 @@ def test_request_endpoints_set_no_store(client, post_headers) -> None:
     assert detailed.headers["cache-control"] == "no-store"
 
 
-def test_deleting_user_cascades_requests(client, post_headers) -> None:
-    signup(client, post_headers)
-    created = create_request(client, post_headers)
-    buyer_id = created["buyer"]["id"]
+def test_purchase_request_fk_cascades_on_user_delete(db_engine) -> None:
+    db_inspector = inspect(db_engine)
+    foreign_keys = db_inspector.get_foreign_keys(
+        "purchase_requests", schema="app_private"
+    )
+    buyer_fk = next(fk for fk in foreign_keys if fk["constrained_columns"] == ["buyer_id"])
+    assert buyer_fk["referred_table"] == "users"
+    assert buyer_fk["referred_columns"] == ["id"]
+    assert buyer_fk["options"]["ondelete"] == "CASCADE"
 
     engine = database_engine()
-    with engine.begin() as connection:
-        connection.execute(
-            text("DELETE FROM app_private.users WHERE id = :buyer_id"),
-            {"buyer_id": buyer_id},
-        )
+    with engine.connect() as connection:
         assert connection.scalar(
-            text("SELECT count(*) FROM app_private.purchase_requests WHERE id = :id"),
-            {"id": created["id"]},
-        ) == 0
+            text(
+                "SELECT confdeltype FROM pg_constraint "
+                "WHERE conname = 'purchase_requests_buyer_id_fkey'"
+            )
+        ) == "c"
     engine.dispose()
 
 
@@ -532,7 +579,9 @@ def test_deleting_user_cascades_requests(client, post_headers) -> None:
         {"condition": "bogus"},
     ],
 )
-def test_db_check_constraints_reject_invalid_rows(client, post_headers, overrides) -> None:
+def test_db_check_constraints_reject_invalid_rows(
+    client, post_headers, rollback_connection, overrides
+) -> None:
     signup_response = signup(client, post_headers)
     buyer_id = signup_response.json()["user"]["id"]
     values: dict[str, object] = {
@@ -549,9 +598,8 @@ def test_db_check_constraints_reject_invalid_rows(client, post_headers, override
     }
     values.update(overrides)
 
-    engine = database_engine()
-    with pytest.raises(IntegrityError), engine.begin() as connection:
-        connection.execute(
+    with pytest.raises(IntegrityError):
+        rollback_connection.execute(
             text(
                 "INSERT INTO app_private.purchase_requests "
                 "(id, buyer_id, title, description, category, condition, price_min, price_max, region, status) "
@@ -559,7 +607,6 @@ def test_db_check_constraints_reject_invalid_rows(client, post_headers, override
             ),
             values,
         )
-    engine.dispose()
 
 
 class FailingSession:
@@ -598,11 +645,8 @@ def test_database_failure_returns_503_without_leaking_credentials(client, caplog
     assert "database/private" not in combined
 
 
-def test_migration_0002_upgrade_and_downgrade() -> None:
-    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+def test_migration_0002_schema_and_offline_sql() -> None:
     engine = database_engine()
-
-    command.upgrade(config, "head")
     db_inspector = inspect(engine)
     assert db_inspector.has_table("purchase_requests", schema="app_private")
     assert EXPECTED_CHECKS <= {
@@ -616,12 +660,27 @@ def test_migration_0002_upgrade_and_downgrade() -> None:
         for index in db_inspector.get_indexes("purchase_requests", schema="app_private")
     }
 
-    try:
-        command.downgrade(config, "0001_create_auth_tables")
-        downgraded = inspect(engine)
-        assert not downgraded.has_table("purchase_requests", schema="app_private")
-        assert downgraded.has_table("users", schema="app_private")
-        assert downgraded.has_table("auth_sessions", schema="app_private")
-    finally:
-        command.upgrade(config, "head")
-        engine.dispose()
+    engine.dispose()
+
+    upgrade_buffer = io.StringIO()
+    upgrade_config = Config(str(ALEMBIC_INI), output_buffer=upgrade_buffer)
+    command.upgrade(
+        upgrade_config,
+        "0001_create_auth_tables:0002_create_purchase_requests",
+        sql=True,
+    )
+    upgrade_sql = upgrade_buffer.getvalue().upper()
+    assert "CREATE TABLE APP_PRIVATE.PURCHASE_REQUESTS" in upgrade_sql
+    assert "ON DELETE CASCADE" in upgrade_sql
+
+    downgrade_buffer = io.StringIO()
+    downgrade_config = Config(str(ALEMBIC_INI), output_buffer=downgrade_buffer)
+    command.downgrade(
+        downgrade_config,
+        "0002_create_purchase_requests:0001_create_auth_tables",
+        sql=True,
+    )
+    downgrade_sql = downgrade_buffer.getvalue().upper()
+    assert "DROP TABLE APP_PRIVATE.PURCHASE_REQUESTS" in downgrade_sql
+    assert "DROP TABLE APP_PRIVATE.USERS" not in downgrade_sql
+    assert "DROP TABLE APP_PRIVATE.AUTH_SESSIONS" not in downgrade_sql

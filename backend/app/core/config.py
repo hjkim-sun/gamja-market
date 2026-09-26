@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     session_cookie_secure: bool
     session_ttl_seconds: int = Field(default=604800, gt=0)
     session_cookie_name: str = "gamja_session"
+    application_lock_timeout_ms: int = Field(default=5000, ge=100, le=30000)
 
     @field_validator("database_url", "migration_database_url")
     @classmethod

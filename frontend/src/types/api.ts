@@ -10,7 +10,10 @@ export type ApiErrorCode =
   | 'SERVICE_UNAVAILABLE'
   | 'NOT_FOUND'
   | 'INTERNAL_ERROR'
-  | 'NETWORK_ERROR';
+  | 'NETWORK_ERROR'
+  | 'SELF_APPLICATION_FORBIDDEN'
+  | 'REQUEST_NOT_OPEN'
+  | 'ALREADY_APPLIED';
 
 export type ApiErrorFields = Partial<Record<string, string>>;
 
