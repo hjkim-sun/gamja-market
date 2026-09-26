@@ -7,6 +7,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.auth import router as auth_router
 from app.api.requests import router as requests_router
+from app.api.request_photos import router as request_photos_router
 from app.api.deps import expire_session_cookie
 from app.core.config import get_settings
 from app.api.errors import ApiError, error_from_exception, error_response
@@ -14,12 +15,16 @@ from app.api.errors import ApiError, error_from_exception, error_response
 app = FastAPI(title="Gamja Market API")
 app.include_router(auth_router)
 app.include_router(requests_router)
+app.include_router(request_photos_router)
 
 
 @app.middleware("http")
 async def auth_no_store(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith(("/api/auth/", "/api/requests")):
+    if request.url.path.startswith(("/api/auth/", "/api/requests")) or (
+        request.url.path.startswith("/api/request-photos")
+        and not request.url.path.startswith("/api/request-photos/files/")
+    ):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -42,6 +47,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         "priceMax": "최대가는 최소가보다 크거나 같아야 합니다.",
         "condition": "희망 상태를 선택해 주세요.",
         "region": "거래 지역을 입력해 주세요.",
+        "photoIds": "사진은 서로 다른 5장 이하로 첨부해 주세요.",
         "page": "입력값을 확인해 주세요.",
         "pageSize": "입력값을 확인해 주세요.",
         "q": "입력값을 확인해 주세요.",
@@ -54,7 +60,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     # Never serialize Pydantic's input/context: they can contain password values.
     for error in exc.errors():
         location = error.get("loc", ())
-        field = location[-1] if location else None
+        field = next((part for part in location if isinstance(part, str) and part in allowed), None)
         if isinstance(field, str) and field in allowed and field not in fields:
             fields[field] = allowed[field]
     return error_response(422, "VALIDATION_ERROR", fields=fields)

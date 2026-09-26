@@ -14,6 +14,8 @@ from app.db.session import get_db
 from app.repositories.sessions import get_session_user
 from app.services.auth import remove_expired_session
 from app.services.errors import ServiceUnavailable
+from app.storage.local import LocalPhotoStorage
+from app.storage.supabase import SupabasePhotoStorage
 
 _SESSION_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
 
@@ -44,6 +46,24 @@ def require_auth_post_request(request: Request, settings: Settings = Depends(get
     content_type = request.headers.get("content-type", "")
     if content_type.split(";", 1)[0].strip().lower() != "application/json":
         raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE")
+
+
+def require_same_origin_mutation(request: Request, settings: Settings = Depends(get_settings)) -> None:
+    origin = request.headers.get("origin")
+    if origin not in settings.auth_allowed_origins or request.headers.get("x-requested-with") != "gamja-market":
+        raise ApiError(403, "INVALID_ORIGIN")
+
+
+def make_photo_storage(settings: Settings):
+    if settings.photo_storage_driver == "local":
+        return LocalPhotoStorage(settings.photo_local_storage_dir or "")
+    if settings.photo_storage_driver == "supabase":
+        return SupabasePhotoStorage(settings.supabase_url or "", settings.supabase_secret_key.get_secret_value() if settings.supabase_secret_key else "", settings.supabase_storage_bucket or "")
+    return None
+
+
+def get_photo_storage(settings: Settings = Depends(get_settings)):
+    return make_photo_storage(settings)
 
 
 def get_current_user(

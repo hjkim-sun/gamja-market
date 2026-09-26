@@ -31,6 +31,8 @@ export function RequestCard({ request }: RequestCardProps) {
             <img
               src={request.thumbnailUrl}
               alt={`${request.title} 참고 이미지`}
+              loading="lazy"
+              decoding="async"
               className="size-full object-cover"
             />
           ) : (

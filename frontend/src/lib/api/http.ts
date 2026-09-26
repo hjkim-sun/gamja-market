@@ -15,6 +15,10 @@ const KNOWN_ERROR_CODES: readonly ApiErrorCode[] = [
   'NOT_FOUND',
   'INTERNAL_ERROR',
   'NETWORK_ERROR',
+  'PAYLOAD_TOO_LARGE',
+  'INVALID_IMAGE',
+  'PHOTO_LIMIT_EXCEEDED',
+  'PHOTO_STORAGE_UNAVAILABLE',
 ];
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -38,6 +42,7 @@ export function fallbackCode(status: number): ApiErrorCode {
   if (status === 403) return 'INVALID_ORIGIN';
   if (status === 404) return 'NOT_FOUND';
   if (status === 409) return 'EMAIL_ALREADY_EXISTS';
+  if (status === 413) return 'PAYLOAD_TOO_LARGE';
   if (status === 415) return 'UNSUPPORTED_MEDIA_TYPE';
   if (status === 422) return 'VALIDATION_ERROR';
   if (status === 503) return 'SERVICE_UNAVAILABLE';

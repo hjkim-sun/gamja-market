@@ -15,6 +15,10 @@ ERROR_MESSAGES = {
     "SERVICE_UNAVAILABLE": "서비스를 일시적으로 사용할 수 없습니다.",
     "NOT_FOUND": "요청을 찾을 수 없습니다.",
     "INTERNAL_ERROR": "서버 오류가 발생했습니다.",
+    "PAYLOAD_TOO_LARGE": "사진은 3MB 이하만 올릴 수 있어요.",
+    "INVALID_IMAGE": "JPG, PNG, WEBP 형식의 2천만 화소 이하 정지 사진만 올릴 수 있어요.",
+    "PHOTO_LIMIT_EXCEEDED": "업로드 중인 사진이 너무 많아요. 잠시 후 다시 시도해 주세요.",
+    "PHOTO_STORAGE_UNAVAILABLE": "사진 업로드를 지금 사용할 수 없어요.",
 }
 
 

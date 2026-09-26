@@ -10,7 +10,11 @@ export type ApiErrorCode =
   | 'SERVICE_UNAVAILABLE'
   | 'NOT_FOUND'
   | 'INTERNAL_ERROR'
-  | 'NETWORK_ERROR';
+  | 'NETWORK_ERROR'
+  | 'PAYLOAD_TOO_LARGE'
+  | 'INVALID_IMAGE'
+  | 'PHOTO_LIMIT_EXCEEDED'
+  | 'PHOTO_STORAGE_UNAVAILABLE';
 
 export type ApiErrorFields = Partial<Record<string, string>>;
 

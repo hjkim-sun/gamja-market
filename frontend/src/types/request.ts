@@ -30,10 +30,27 @@ export interface PurchaseRequestSummary {
   isOwner: boolean;
 }
 
+/** 설계서 7.1 — 상세 응답의 사진 갤러리 항목. */
+export interface RequestPhoto {
+  id: string;
+  url: string;
+}
+
 export interface PurchaseRequestDetail extends PurchaseRequestSummary {
   description: string;
   updatedAt: string;
   buyer: RequestBuyer;
+  photos: RequestPhoto[];
+}
+
+/** `POST /api/request-photos` 성공 응답(설계서 5.2). URL·저장 경로는 포함하지 않는다. */
+export interface UploadedRequestPhoto {
+  id: string;
+  contentType: string;
+  byteSize: number;
+  width: number;
+  height: number;
+  expiresAt: string;
 }
 
 /** 컴포넌트 prop 타입으로 계속 쓰인다. */
@@ -64,6 +81,8 @@ export interface CreateRequestPayload {
   priceMax: number;
   condition: ProductCondition;
   region: string;
+  /** 등록에 연결할 업로드된 사진 ID. 비어 있으면 요청 JSON에서 키 자체를 생략한다. */
+  photoIds?: string[];
 }
 
 export interface ListRequestsParams {
