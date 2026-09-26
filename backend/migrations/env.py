@@ -11,7 +11,10 @@ from app.db.models import Base
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().migration_database_url.replace("%", "%%"))
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Alembic is also invoked in-process by the guarded test fixture.  Preserve
+    # the application's loggers so a later request can still record a sanitized
+    # database failure instead of silently disabling it.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

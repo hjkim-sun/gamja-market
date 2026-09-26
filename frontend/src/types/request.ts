@@ -2,13 +2,6 @@ export type RequestStatus = 'open' | 'matched' | 'closed';
 
 export type ProductCondition = 'any' | 'new' | 'like_new' | 'used';
 
-/** 4단계 지원 API를 위해 타입만 남긴다. 이 단계는 이 타입의 데이터를 만들지 않는다. */
-export interface UserSummary {
-  id: string;
-  nickname: string;
-  region: string;
-}
-
 /** 구매자 표시는 이메일 로컬파트 마스킹만 쓴다(설계서 3.2). */
 export interface RequestBuyer {
   id: string;
@@ -61,16 +54,6 @@ export interface RequestListEnvelope {
   total: number;
   page: number;
   pageSize: number;
-}
-
-/** 4단계 지원 API를 위해 타입만 남긴다. 이 단계는 이 타입의 데이터를 만들지 않는다. */
-export interface Applicant {
-  id: string;
-  requestId: string;
-  seller: UserSummary;
-  offerPrice: number;
-  message: string;
-  createdAt: string;
 }
 
 export interface CreateRequestPayload {

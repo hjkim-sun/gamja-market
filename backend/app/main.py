@@ -6,8 +6,9 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.auth import router as auth_router
-from app.api.requests import router as requests_router
+from app.api.applications import chat_rooms_router, router as applications_router
 from app.api.request_photos import router as request_photos_router
+from app.api.requests import router as requests_router
 from app.api.deps import expire_session_cookie
 from app.core.config import get_settings
 from app.api.errors import ApiError, error_from_exception, error_response
@@ -16,12 +17,22 @@ app = FastAPI(title="Gamja Market API")
 app.include_router(auth_router)
 app.include_router(requests_router)
 app.include_router(request_photos_router)
+app.include_router(applications_router)
+app.include_router(chat_rooms_router)
+
+
+def _api_no_store(response: JSONResponse, path: str) -> JSONResponse:
+    if path.startswith(("/api/auth/", "/api/requests", "/api/chat-rooms")) or (
+        path.startswith("/api/request-photos") and not path.startswith("/api/request-photos/files/")
+    ):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.middleware("http")
 async def auth_no_store(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith(("/api/auth/", "/api/requests")) or (
+    if request.url.path.startswith(("/api/auth/", "/api/requests", "/api/chat-rooms")) or (
         request.url.path.startswith("/api/request-photos")
         and not request.url.path.startswith("/api/request-photos/files/")
     ):
@@ -34,7 +45,7 @@ async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
     response = error_from_exception(exc)
     if exc.detail["code"] == "UNAUTHENTICATED":
         expire_session_cookie(response, get_settings())
-    return response
+    return _api_no_store(response, _.url.path)
 
 
 @app.exception_handler(RequestValidationError)
@@ -55,7 +66,13 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         "status": "입력값을 확인해 주세요.",
     }
     auth_fields = {"email": "입력값을 확인해 주세요.", "password": "입력값을 확인해 주세요.", "password_confirmation": "입력값을 확인해 주세요."}
-    allowed = request_fields if request.url.path.startswith("/api/requests") else auth_fields
+    application_fields = {
+        "offerPrice": "제시가는 0원 이상 10억원 이하의 정수로 입력해 주세요.",
+        "message": "지원 메시지는 2자 이상 500자 이하로 입력해 주세요.",
+    }
+    path = request.url.path
+    is_application_path = path.startswith("/api/requests/") and path.endswith("/applications")
+    allowed = application_fields if is_application_path else request_fields if path.startswith("/api/requests") else auth_fields
     fields: dict[str, str] = {}
     # Never serialize Pydantic's input/context: they can contain password values.
     for error in exc.errors():
@@ -63,16 +80,16 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         field = next((part for part in location if isinstance(part, str) and part in allowed), None)
         if isinstance(field, str) and field in allowed and field not in fields:
             fields[field] = allowed[field]
-    return error_response(422, "VALIDATION_ERROR", fields=fields)
+    return _api_no_store(error_response(422, "VALIDATION_ERROR", fields=fields), path)
 
 
 @app.exception_handler(StarletteHTTPException)
-async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def http_error_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     if exc.status_code == 415:
-        return error_response(415, "UNSUPPORTED_MEDIA_TYPE")
-    return error_response(exc.status_code, "INTERNAL_ERROR")
+        return _api_no_store(error_response(415, "UNSUPPORTED_MEDIA_TYPE"), request.url.path)
+    return _api_no_store(error_response(exc.status_code, "INTERNAL_ERROR"), request.url.path)
 
 
 @app.exception_handler(Exception)
-async def unexpected_error_handler(_: Request, __: Exception) -> JSONResponse:
-    return error_response(500, "INTERNAL_ERROR")
+async def unexpected_error_handler(request: Request, _: Exception) -> JSONResponse:
+    return _api_no_store(error_response(500, "INTERNAL_ERROR"), request.url.path)

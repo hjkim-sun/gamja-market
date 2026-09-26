@@ -1,14 +1,14 @@
 """create purchase request photos (additive and idempotent)
 
 Revision ID: 0004_request_photos
-Revises: 0002_create_purchase_requests
+Revises: 0003_seller_applications
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 revision = "0004_request_photos"
-down_revision = "0002_create_purchase_requests"
+down_revision = "0003_seller_applications"
 branch_labels = None
 depends_on = None
 

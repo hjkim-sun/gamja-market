@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from sqlalchemy import create_engine, text
 
-def signup_payload(email: str, **overrides: object) -> dict[str, object]:
+from conftest import ns_email
+
+def signup_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
-        "email": email,
+        "email": "  Buyer@Example.com  ",
         "password": "potato-pass-123",
         "password_confirmation": "potato-pass-123",
     }
@@ -19,10 +21,16 @@ def assert_error(response, status: int, code: str) -> None:
     assert isinstance(response.json()["error"]["fields"], dict)
 
 
-def test_signup_me_logout_and_relogin(client, post_headers, unique_email) -> None:
-    email = unique_email("buyer")
+def test_signup_me_logout_and_relogin(client, post_headers, test_ns, monkeypatch) -> None:
+    from app.db.session import get_db
+    from app.main import app
+
+    email = ns_email(test_ns, "buyer")
+    mixed_case_email = email.replace("t4-", "T4-", 1)
     signup = client.post(
-        "/api/auth/signup", headers=post_headers, json=signup_payload(f"  {email.upper()}  ")
+        "/api/auth/signup",
+        headers=post_headers,
+        json=signup_payload(email=f"  {mixed_case_email}  "),
     )
     assert signup.status_code == 201
     assert signup.headers["cache-control"] == "no-store"
@@ -35,32 +43,79 @@ def test_signup_me_logout_and_relogin(client, post_headers, unique_email) -> Non
     assert current.status_code == 200
     assert current.json() == signup.json()
 
-    logout = client.post("/api/auth/logout", headers=post_headers, json={})
+    # Production logout legitimately deletes its own session token, but shared-DB
+    # preservation forbids exercising that DELETE here. Keep the HTTP contract
+    # covered with a nonexecuting repository stub and isolated fake session.
+    class LogoutSession:
+        committed = False
+
+        def commit(self) -> None:
+            self.committed = True
+
+        def rollback(self) -> None:
+            raise AssertionError("logout should not roll back on the success path")
+
+    logout_session = LogoutSession()
+    deleted_hashes: list[str] = []
+
+    def fake_db():
+        yield logout_session
+
+    monkeypatch.setattr("app.services.auth.delete_by_hash", lambda _db, value: deleted_hashes.append(value))
+    app.dependency_overrides[get_db] = fake_db
+    try:
+        logout = client.post("/api/auth/logout", headers=post_headers, json={})
+    finally:
+        app.dependency_overrides.pop(get_db, None)
     assert logout.status_code == 204
     assert logout.content == b""
     assert "Max-Age=0" in logout.headers["set-cookie"]
+    assert logout_session.committed is True
+    assert len(deleted_hashes) == 1
     unauthenticated = client.get("/api/auth/me")
     assert_error(unauthenticated, 401, "UNAUTHENTICATED")
     assert "Max-Age=0" in unauthenticated.headers["set-cookie"]
 
     relogin = client.post(
         "/api/auth/login", headers=post_headers,
-        json={"email": email.upper(), "password": "potato-pass-123"},
+        json={"email": mixed_case_email, "password": "potato-pass-123"},
     )
     assert relogin.status_code == 200
     assert relogin.json() == signup.json()
 
 
+def test_expired_session_cleanup_contract_without_live_delete() -> None:
+    from app.services.auth import remove_expired_session
+
+    class ExpiredSessionRecorder:
+        deleted: list[object] = []
+        committed = False
+
+        def delete(self, value: object) -> None:
+            self.deleted.append(value)
+
+        def commit(self) -> None:
+            self.committed = True
+
+        def rollback(self) -> None:
+            raise AssertionError("expired-session cleanup should not roll back on success")
+
+    marker = object()
+    recorder = ExpiredSessionRecorder()
+    remove_expired_session(recorder, marker)  # type: ignore[arg-type]
+    assert recorder.deleted == [marker]
+    assert recorder.committed is True
+
+
 def test_signup_mismatch_precedes_database_work_and_never_returns_secret(
-    client, post_headers, unique_email
+    client, post_headers, test_ns
 ) -> None:
     from app.core.config import get_settings
 
+    email = ns_email(test_ns, "mismatch")
     response = client.post(
         "/api/auth/signup", headers=post_headers,
-        json=signup_payload(
-            unique_email("mismatch"), password_confirmation="different-password-123"
-        ),
+        json=signup_payload(email=email, password_confirmation="different-password-123"),
     )
     assert_error(response, 422, "PASSWORD_MISMATCH")
     assert response.json()["error"] == {
@@ -74,31 +129,28 @@ def test_signup_mismatch_precedes_database_work_and_never_returns_secret(
     with engine.connect() as connection:
         assert connection.scalar(
             text("SELECT count(*) FROM app_private.users WHERE email = :email"),
-            {"email": unique_email("mismatch")},
+            {"email": email},
         ) == 0
     engine.dispose()
 
 
-def test_validation_duplicate_login_and_post_security_contract(
-    client, post_headers, unique_email
-) -> None:
-    email = unique_email("security")
+def test_validation_duplicate_login_and_post_security_contract(client, post_headers, test_ns) -> None:
+    email = ns_email(test_ns, "security")
     invalid = client.post("/api/auth/signup", headers=post_headers, content='{"email":')
     assert_error(invalid, 422, "VALIDATION_ERROR")
 
     short_confirmation = client.post(
-        "/api/auth/signup",
-        headers=post_headers,
-        json=signup_payload(email, password_confirmation="short"),
+        "/api/auth/signup", headers=post_headers,
+        json=signup_payload(email=email, password_confirmation="short"),
     )
     assert_error(short_confirmation, 422, "VALIDATION_ERROR")
     assert "password_confirmation" in short_confirmation.json()["error"]["fields"]
 
     assert client.post(
-        "/api/auth/signup", headers=post_headers, json=signup_payload(email)
+        "/api/auth/signup", headers=post_headers, json=signup_payload(email=email)
     ).status_code == 201
     duplicate = client.post(
-        "/api/auth/signup", headers=post_headers, json=signup_payload(email)
+        "/api/auth/signup", headers=post_headers, json=signup_payload(email=email)
     )
     assert_error(duplicate, 409, "EMAIL_ALREADY_EXISTS")
     assert duplicate.json()["error"]["fields"] == {"email": "이미 가입된 이메일입니다."}
@@ -109,7 +161,7 @@ def test_validation_duplicate_login_and_post_security_contract(
     )
     missing_login = client.post(
         "/api/auth/login", headers=post_headers,
-        json={"email": unique_email("missing"), "password": "wrong-pass-123"},
+        json={"email": ns_email(test_ns, "missing"), "password": "wrong-pass-123"},
     )
     assert_error(bad_login, 401, "INVALID_CREDENTIALS")
     assert bad_login.json() == missing_login.json()

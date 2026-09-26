@@ -1,10 +1,11 @@
 import { ApplicantList } from '@/features/requests/components/ApplicantList';
+import { ApplyPanel } from '@/features/applications/components/ApplyPanel';
 import { RequestPhotoGallery } from '@/features/requests/components/RequestPhotoGallery';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { formatDateTime, formatPriceRange } from '@/lib/format';
-import type { Applicant, ProductCondition, PurchaseRequestDetail } from '@/types/request';
+import type { Application, ApplicationViewerRole } from '@/types/application';
+import type { ProductCondition, PurchaseRequestDetail } from '@/types/request';
 
 const conditionLabels: Record<ProductCondition, string> = {
   any: '상관없음',
@@ -15,10 +16,15 @@ const conditionLabels: Record<ProductCondition, string> = {
 
 interface RequestDetailProps {
   request: PurchaseRequestDetail;
-  applicants: Applicant[];
+  applications: Application[];
+  /** null은 지원 현황 조회 자체가 실패한 상태다. 지원 UI를 아예 감춘다(설계서 11.3). */
+  viewerRole: ApplicationViewerRole | null;
+  applicantCount: number;
 }
 
-export function RequestDetail({ request, applicants }: RequestDetailProps) {
+export function RequestDetail({ request, applications, viewerRole, applicantCount }: RequestDetailProps) {
+  // applicant 역할은 목록에 본인 지원 1건만 내려온다(설계서 6.2).
+  const ownApplication = viewerRole === 'applicant' ? (applications[0] ?? null) : null;
   return (
     <>
       <article>
@@ -73,16 +79,22 @@ export function RequestDetail({ request, applicants }: RequestDetailProps) {
         </Card>
       </article>
 
-      <ApplicantList applicants={applicants} />
+      <ApplicantList
+        applicantCount={applicantCount}
+        viewerRole={viewerRole ?? 'anonymous'}
+        applications={applications}
+      />
 
-      <div className="sticky bottom-0 z-30 -mx-4 mt-10 border-t border-stone-200 bg-white/95 px-4 py-4 backdrop-blur sm:-mx-6 sm:px-6">
-        <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4">
-          <p className="hidden text-sm text-stone-500 sm:block">판매자 지원 기능은 4단계에서 열립니다.</p>
-          <Button disabled title="4단계에서 구현 예정" className="w-full sm:ml-auto sm:w-auto sm:min-w-48">
-            지원하기 · 준비 중
-          </Button>
-        </div>
-      </div>
+      {viewerRole ? (
+        <ApplyPanel
+          requestId={request.id}
+          requestStatus={request.status}
+          viewerRole={viewerRole}
+          application={ownApplication}
+          priceMin={request.priceMin}
+          priceMax={request.priceMax}
+        />
+      ) : null}
     </>
   );
 }

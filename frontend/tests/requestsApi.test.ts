@@ -183,6 +183,21 @@ describe('구매요청 API 클라이언트', () => {
     });
   });
 
+  it('0이 아닌 applicantCount를 실제 집계 값으로 파싱한다', async () => {
+    stubFetch(async () =>
+      jsonResponse(200, {
+        items: [{ ...summary, applicantCount: 7 }],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    );
+
+    const result = await requestsApi.listRequests({});
+
+    expect(result.items[0].applicantCount).toBe(7);
+  });
+
   it('404 응답을 NOT_FOUND ApiError로 변환한다', async () => {
     stubFetch(async () =>
       jsonResponse(404, {

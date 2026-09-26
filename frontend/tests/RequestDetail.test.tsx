@@ -28,7 +28,12 @@ const request = {
 };
 
 function renderDetail() {
-  const props = { request, applicants: [] } as unknown as ComponentProps<typeof RequestDetail>;
+  const props = {
+    request,
+    applications: [],
+    viewerRole: 'owner',
+    applicantCount: 0,
+  } as unknown as ComponentProps<typeof RequestDetail>;
   return render(<RequestDetail {...props} />);
 }
 
@@ -52,5 +57,7 @@ describe('RequestDetail', () => {
     expect(screen.getByRole('heading', { name: '지원한 판매자 0명' })).toBeInTheDocument();
     expect(screen.getByText('아직 지원한 판매자가 없어요')).toBeInTheDocument();
     expect(screen.queryByText(/sellerA|판매자A|minji/)).not.toBeInTheDocument();
+    expect(screen.queryByText('판매자 지원 기능은 4단계에서 열립니다.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '지원하기 · 준비 중' })).not.toBeInTheDocument();
   });
 });
