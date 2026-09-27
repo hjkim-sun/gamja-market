@@ -2,8 +2,6 @@
 
 Copy `.env.example` to `.env` and provide PostgreSQL credentials. The application starts without running migrations. Migration work is separate from service startup; check the target of `MIGRATION_DATABASE_URL` before running it, since it may point to Supabase.
 
-The example enables Git-ignored local photo storage at `backend/.local-storage`, so JPEG, PNG, and WebP uploads work in development. For production, set `PHOTO_STORAGE_DRIVER=supabase` together with the three server-only `SUPABASE_*` variables; never commit those credentials.
-
 ```sh
 uv sync
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
