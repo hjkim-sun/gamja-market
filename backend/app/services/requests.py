@@ -28,8 +28,8 @@ def mask_email(email: str) -> str:
     return f"{visible}{'*' * max(1, len(local) - len(visible))}{separator}{domain}"
 
 
-def _photo_data(photo: PurchaseRequestPhoto, namespace: tuple[str, str | None], settings: Settings) -> dict[str, Any] | None:
-    url = photo_url(namespace, photo.storage_path, photo.id, photo.storage_path.rsplit(".", 1)[-1], settings.supabase_url)
+def _photo_data(photo: PurchaseRequestPhoto, namespace: tuple[str, str | None]) -> dict[str, Any] | None:
+    url = photo_url(namespace, photo.id, photo.storage_path.rsplit(".", 1)[-1])
     return {"id": photo.id, "url": url} if url else None
 
 
@@ -48,7 +48,7 @@ def _summary_data(
         "price_max": request.price_max,
         "region": request.region,
         "status": request.status,
-        "thumbnail_url": thumbnail_url or request.thumbnail_url,
+        "thumbnail_url": thumbnail_url,
         "applicant_count": applicant_count,
         "created_at": request.created_at,
         "is_owner": viewer_id == request.buyer_id,
@@ -118,7 +118,7 @@ def create_request(
             for index, photo_id in enumerate(payload.photo_ids):
                 photo = by_id[photo_id]
                 photo.status, photo.request_id, photo.sort_order, photo.updated_at = "attached", request.id, index, utcnow()
-                data = _photo_data(photo, namespace, settings)
+                data = _photo_data(photo, namespace)
                 if data is not None:
                     attached_by_id[photo_id] = data
         db.commit()
@@ -148,7 +148,7 @@ def _attached_for_request(
             bucket_condition,
         ).order_by(PurchaseRequestPhoto.sort_order)
     ).scalars()
-    return [data for photo in photos if (data := _photo_data(photo, namespace, settings)) is not None]
+    return [data for photo in photos if (data := _photo_data(photo, namespace)) is not None]
 
 
 def list_requests(
@@ -183,7 +183,7 @@ def list_requests(
             thumbnails = {
                 photo.request_id: data["url"]
                 for photo in photos
-                if photo.request_id and (data := _photo_data(photo, namespace, settings))
+                if photo.request_id and (data := _photo_data(photo, namespace))
             }
         return [
             _summary_data(request, viewer_id, applicant_count, thumbnails.get(request.id))

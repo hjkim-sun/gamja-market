@@ -22,6 +22,8 @@ app.include_router(chat_rooms_router)
 
 
 def _api_no_store(response: JSONResponse, path: str) -> JSONResponse:
+    if path.startswith("/api/request-photos/files/") and response.status_code != 200:
+        response.headers["Cache-Control"] = "no-store"
     if path.startswith(("/api/auth/", "/api/requests", "/api/chat-rooms")) or (
         path.startswith("/api/request-photos") and not path.startswith("/api/request-photos/files/")
     ):
@@ -32,6 +34,8 @@ def _api_no_store(response: JSONResponse, path: str) -> JSONResponse:
 @app.middleware("http")
 async def auth_no_store(request: Request, call_next):
     response = await call_next(request)
+    if request.url.path.startswith("/api/request-photos/files/") and response.status_code != 200:
+        response.headers["Cache-Control"] = "no-store"
     if request.url.path.startswith(("/api/auth/", "/api/requests", "/api/chat-rooms")) or (
         request.url.path.startswith("/api/request-photos")
         and not request.url.path.startswith("/api/request-photos/files/")

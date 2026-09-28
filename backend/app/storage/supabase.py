@@ -31,6 +31,20 @@ class SupabasePhotoStorage:
         except httpx.HTTPError:
             raise StorageError("storage write failed") from None
 
+    def read(self, path: str) -> bytes:
+        try:
+            with httpx.Client(timeout=httpx.Timeout(10.0, connect=3.0), transport=self._transport) as client:
+                response = client.get(
+                    f"{self.url}/storage/v1/object/authenticated/{self.bucket}/{path}",
+                    headers=self._headers(),
+                )
+                if response.status_code == 404:
+                    raise FileNotFoundError("photo object not found")
+                response.raise_for_status()
+                return response.content
+        except httpx.HTTPError:
+            raise StorageError("storage read failed") from None
+
     def delete_many(self, paths: list[str]) -> set[str]:
         if not paths:
             return set()

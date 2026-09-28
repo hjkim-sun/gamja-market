@@ -1,5 +1,7 @@
 # 07. 구매요청 사진 첨부 — Supabase Storage 연동
 
+> **후속 변경:** 08 문서가 버킷 공개 여부, 사진 URL·제공 API, 프런트 URL 허용 범위 및 운영 절차를 대체한다. 관련 절은 현재 계약에 맞춰 개정했다.
+
 > 기준: `curriculum.md` **5단계**("Supabase Storage 연동, 구매요청에 사진 첨부")와 2026-09-26 코드 조사(`hjkim-sun/curriculum-05-request-photos` 워크트리, 기준 커밋 `bab6411`).
 > 문서 번호 `06`은 동시에 진행 중인 4단계(판매자 지원) 설계가 사용한다. 본 문서는 `07`이며, 문서 번호는 커리큘럼 단계 번호와 별개다.
 > 이 문서는 **후속 구현 계약**이다. 구현 완료를 뜻하지 않으며, 이번 설계 작업은 이 Markdown 한 개만 추가한다. 운영 코드·테스트·환경 파일은 수정하지 않았다.
@@ -88,14 +90,10 @@
 - **등록(create)은 순수 DB 트랜잭션**이다. Storage를 호출하지 않으므로 등록 단계에는 DB/Storage 불일치와 보상 로직이 없다. 불일치 가능성은 업로드 단계와 폐기 단계로 한정되고, 두 단계 모두 "DB 행을 먼저 기록 → Storage 작업 → DB 확정" 순서로 추적 가능하게 만든다(6장).
 - `photoId`는 서버가 생성한 UUIDv4다. **ID를 안다고 권한이 생기지 않는다.** 등록·삭제 때마다 `uploader_id = 세션 사용자`를 DB에서 확인한다. 브라우저에 Storage 토큰이나 경로를 주지 않는다. 이것이 과제의 "소유자 범위 업로드 토큰/ID"에 대한 답이다.
 
-### 3.3 버킷 공개 여부: 공개 버킷 + 추측 불가 경로 (채택)
+### 3.3 버킷 공개 여부: private (08에서 변경)
 
-- 구매요청 목록·상세는 **비로그인 공개**이므로 첨부 사진에도 사용자별 접근 제한이 없다. Supabase 공식 문서(Smart CDN, "Signed URLs and CDN caching")는 사용자별 제한이 없는 자산에 **공개 버킷을 권장**한다. 서명 URL은 요청마다 토큰이 달라 CDN·브라우저 캐시가 적중하지 않는다.
-- 공개 URL은 `{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}` 형식이며 **서버가 문자열로 조립**한다. 목록·상세 조회 경로에서 Storage API를 호출하지 않으므로 **Storage 장애가 조회 API를 503으로 만들지 않는다.**
-- 공개 버킷의 위험과 완화:
-  - 등록 전 `pending` 사진도 URL을 알면 열람 가능하다 → 경로는 `photos/{uuid4}.{ext}`로 추측 불가(122비트)하고, 업로드 응답에 URL을 **돌려주지 않는다**(미리보기는 브라우저 `URL.createObjectURL`). 목록 API(`storage.objects` 조회)는 RLS 정책이 없으므로 익명에게 열리지 않는다(버킷 정책을 추가하지 않는다).
-  - 버려진 업로드 → 정리 명령이 객체를 삭제한다(6.4).
-- 대안(비공개 버킷 + 서명 URL)은 12장에 기록한다.
+- 구매요청 목록·상세는 비로그인 공개이며, `attached` 사진만 백엔드 프록시에서 제공한다. `pending` 객체는 비공개 버킷과 프록시 상태 검사로 보호한다.
+- 목록·상세 데이터 조회는 Storage를 호출하지 않는다. 실제 이미지 요청에서만 서버가 인증된 Storage GET을 호출한다. 결정 근거와 오류·캐시 정책은 08 문서를 따른다.
 
 ### 3.4 저장소 드라이버 3종
 
@@ -268,11 +266,11 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 - 처리: 행 `FOR UPDATE` 잠금 → `discarded`(+`discarded_at`) 커밋 → **커밋 확인 후에만** Storage 삭제 시도 → 삭제 확인 시 `object_deleted_at = now()` 커밋. `pending` 객체는 업로드가 이미 끝난 상태라 늦은 쓰기가 없으므로 즉시 삭제 확인을 기록해도 된다.
 - Storage 삭제가 실패해도 **`204`**를 반환한다(행은 이미 `discarded`, 정리 명령이 재시도). 사용자 관점에서 사진은 이미 제거됐다.
 
-### 5.4 `GET /api/request-photos/files/{photoId}.{ext}` — `local` 드라이버 전용
+### 5.4 `GET /api/request-photos/files/{photoId}.{ext}` — `local`·`supabase` 사진 프록시(08에서 변경)
 
-- 드라이버가 `local`일 때만 라우터에 **등록**한다. 그 외 드라이버에서는 라우트 자체가 없어 404다.
+- `local`·`supabase` 드라이버에서 현재 이름공간과 `attached` 상태를 확인한다. `disabled`는 404다.
 - `{photoId}`는 UUID, `{ext}`는 `jpg|png|webp`만 허용(경로 조작 차단). 파일 경로는 DB의 `storage_path`로만 조립한다.
-- `status = 'attached'`인 사진만 제공한다(`pending`은 404 — 공개 버킷에서 URL을 반환하지 않는 것과 동일한 노출 수준).
+- `status = 'attached'`인 사진만 제공한다(`pending`은 404).
 - 응답 헤더: DB `content_type`, `X-Content-Type-Options: nosniff`, `Cache-Control: public, max-age=3600`.
 
 ### 5.5 `POST /api/requests` — 기존 계약 + `photoIds`
@@ -298,13 +296,12 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 
 ```json
 "photos": [
-  { "id": "uuid", "url": "https://<project>.supabase.co/storage/v1/object/public/<bucket>/photos/<uuid>.jpg" }
+  { "id": "uuid", "url": "/api/request-photos/files/<uuid>.jpg" }
 ]
 ```
 
 - URL 조립(`app/services/photo_urls.py`, Storage 호출 없음):
-  - `supabase`: `{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/{storage_path}` (경로 구성요소 퍼센트 인코딩)
-  - `local`: `/api/request-photos/files/{id}.{ext}` (상대 경로 — 브라우저가 프런트 origin 기준으로 요청하고 rewrite가 백엔드로 전달)
+  - `supabase`·`local`: `/api/request-photos/files/{id}.{ext}` (상대 경로 — 브라우저가 프런트 origin 기준으로 요청하고 rewrite가 백엔드로 전달)
   - `disabled`: 사진을 숨긴다(`photos: []`, `thumbnailUrl: null`). 애플리케이션 시작 시 경고 로그 1회.
 - 목록은 페이지의 요청 ID들로 **쿼리 1회**(`DISTINCT ON (request_id) … ORDER BY request_id, sort_order`)로 대표 사진을 가져온다(N+1 금지). 상세는 해당 요청의 attached 사진 1회 조회.
 - **레거시 요청**(사진 0장): `thumbnailUrl: null`, `photos: []`. 기존 행을 변경하지 않는다.
@@ -333,7 +330,7 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 | 타인의 `photoId` 삭제 | 404 |
 | 이미 연결된 사진 재사용 | 422 |
 | 만료(24h 경과) 사진으로 등록 | 422 |
-| 목록/상세 조회 | 공개. 사진 URL은 공개 URL |
+| 목록/상세 조회 | 공개. 사진 URL은 같은 출처 백엔드 프록시 URL |
 
 ---
 
@@ -429,7 +426,7 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 - `src/lib/api/requests.ts`
   - `ALLOWED_FIELD_KEYS`에 `photoIds` 추가.
   - `parseDetail`: `photos`가 **없으면 `[]`**(배포 순서 차이 대비), 배열인데 항목이 `{id: string, url: string}`가 아니면 `INTERNAL_ERROR`.
-  - **URL 안전 검사** `isSafeImageUrl(url)`: `https://`, `http://`(개발), 또는 `/api/request-photos/files/`로 시작하는 상대 경로만 허용. `javascript:`, `data:`, `//host` 등은 거부. `thumbnailUrl`이 안전하지 않으면 `null`로, `photos` 항목이 안전하지 않으면 해당 항목을 제외한다.
+  - **URL 안전 검사** `isSafeImageUrl(url)`: 08 변경 후 `/api/request-photos/files/{uuid}.{ext}` 상대 경로만 허용한다. `https://` 공개 객체 URL, `javascript:`, `data:`, `//host` 등은 거부한다. `thumbnailUrl`이 안전하지 않으면 `null`로, `photos` 항목이 안전하지 않으면 해당 항목을 제외한다.
   - `createRequest`: `photoIds`가 비어 있으면 **키 자체를 보내지 않는다**(레거시와 바이트 단위로 같은 JSON).
 - 새 파일 `src/lib/api/requestPhotos.ts`
   - `uploadRequestPhoto(file: File, signal?)`: `fetch('/api/request-photos', { method: 'POST', body: file, headers: { 'Content-Type': file.type, 'X-Requested-With': 'gamja-market' }, credentials: 'same-origin', cache: 'no-store' })`. 응답 파싱 실패 → `INTERNAL_ERROR`.
@@ -523,11 +520,11 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 | --- | --- |
 | 저장 | `POST {SUPABASE_URL}/storage/v1/object/{bucket}/{path}` — 헤더 `apikey: <secret>`(항상), `Authorization: Bearer <secret>`(레거시 service_role JWT만; `sb_secret_`에는 생략), `Content-Type: <정규화 결과 포맷>`, `x-upsert: false`, `cache-control: 3600`, 본문 = 바이트 |
 | 삭제(일괄) | `DELETE {SUPABASE_URL}/storage/v1/object/{bucket}` — 동일 인증 헤더, JSON `{"prefixes": ["photos/…", …]}`. 응답의 삭제된 객체 목록 + 원래 없던 객체를 "삭제 확인"으로 간주(멱등) |
-| 공개 URL | `{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}` (호출 없음, 문자열 조립) |
+| private 읽기(08) | `GET {SUPABASE_URL}/storage/v1/object/authenticated/{bucket}/{path}` — 서버 전용 인증 헤더; 공개 URL 조립 없음 |
 
 - 최신 secret key는 JWT가 아니므로 `apikey` 헤더에만 넣는다. 레거시 service_role JWT에는 Bearer 헤더도 넣는다([공식 API keys 문서](https://supabase.com/docs/guides/getting-started/api-keys), 구현 준비 시 확인).
 - 비밀 키는 `SecretStr`로 보관하고 헤더를 만들 때만 꺼낸다. 예외 메시지·로그·`repr`에 키, 요청 헤더, 응답 본문 전체를 넣지 않는다. 로그에는 동작 이름, HTTP 상태 코드, `photo_id`만 남긴다.
-- 버킷은 **사람이 Supabase 대시보드에서 수동 생성**한다(앱이 버킷을 만들지 않는다): 공개(public) 버킷, `allowed_mime_types = image/jpeg, image/png, image/webp`, `file_size_limit = 3145728`(3MiB)(서버 검증과 이중 방어). `storage.objects`에 익명 정책을 추가하지 않는다.
+- 버킷 생성의 현재 계약은 **08 문서**를 따른다: private 버킷, `allowed_mime_types = image/jpeg, image/png, image/webp`, `file_size_limit = 3145728`(3MiB). `storage.objects`에 익명 읽기 정책을 추가하지 않는다.
 
 ### 8.3 설정 (이름만 정의 — 값은 사람이 설정)
 
@@ -538,7 +535,7 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 | `PHOTO_STORAGE_DRIVER` | 선택, 기본 `disabled` | `disabled` \| `local` \| `supabase` |
 | `SUPABASE_URL` | driver=`supabase`일 때 필수 | 프로젝트 URL. `https://`로 시작, 끝 `/` 금지 |
 | `SUPABASE_SECRET_KEY` | driver=`supabase`일 때 필수 | 서버 전용 비밀 키(`sb_secret_…` 또는 레거시 service_role). **절대 프런트·로그·응답에 노출 금지** |
-| `SUPABASE_STORAGE_BUCKET` | driver=`supabase`일 때 필수 | 공개 버킷 이름 |
+| `SUPABASE_STORAGE_BUCKET` | driver=`supabase`일 때 필수 | private 버킷 이름(08 문서) |
 | `PHOTO_LOCAL_STORAGE_DIR` | driver=`local`일 때 필수 | 로컬 저장 디렉터리(절대 경로 권장). 저장소 추적 대상 밖이어야 함 |
 
 설정 검증(`Settings` model validator, 기존 스타일과 동일하게 시작 시 실패):
@@ -648,7 +645,7 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 | R3 | fake storage를 "전부 실패" 모드로 두고 목록·상세 | 200, storage 호출 0회 |
 | R4 | 드라이버 `disabled`로 바꾼 뒤 attached 사진 있는 요청 조회 | `photos: []`, `thumbnailUrl: null` |
 | R4b | 다른 이름공간(`local`)으로 attached된 사진이 있는 요청을 `memory` 드라이버로 조회 | 해당 사진 숨김 |
-| R5 | URL 조립 단위 테스트 | supabase: `{SUPABASE_URL}/storage/v1/object/public/{bucket}/photos/{id}.jpg`, local: `/api/request-photos/files/{id}.jpg` |
+| R5 | URL 조립 단위 테스트 | supabase·local: `/api/request-photos/files/{id}.jpg` (08에서 변경) |
 
 **폐기 · 로컬 파일 · 정리**
 
@@ -728,9 +725,9 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 
 현재 워크트리의 환경 파일에는 Supabase 관련 설정이 없다. 따라서 **실제 Storage 연동은 이번 단계 산출물에서 "미검증"으로 명시**한다. 사람이 다음을 준비한 뒤 별도로 수행한다:
 
-1. Supabase 대시보드에서 공개 버킷 생성(허용 MIME 3종, 3MB 제한).
+1. Supabase 대시보드에서 private 버킷 생성(허용 MIME 3종, 3MB 제한). 기존 버킷은 Public OFF로 전환한다(08 문서).
 2. 백엔드 실행 환경(로컬 셸 또는 Vercel backend 서비스 환경 변수)에 `PHOTO_STORAGE_DRIVER=supabase`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` 설정.
-3. 확인 항목: 업로드 201 후 대시보드에 `photos/{id}.{ext}` 객체와 올바른 Content-Type, 내려받은 객체에 EXIF가 없음, 행의 이름공간이 `('supabase', <bucket>)`, 상세의 공개 URL이 브라우저에서 열림, 폐기 후 객체 삭제, 버킷 제한 초과 파일을 서버 검증 없이 직접 올리면 Storage가 거부(이중 방어 확인), 응답·로그·브라우저 번들(`.next` 산출물)에 비밀 키 문자열이 없음, 삭제 API의 실제 응답 형태가 8.2 가정과 일치.
+3. 확인 항목: 업로드 201 후 대시보드에 `photos/{id}.{ext}` 객체와 올바른 Content-Type, 내려받은 객체에 EXIF가 없음, 행의 이름공간이 `('supabase', <bucket>)`, 상세의 프록시 URL이 브라우저에서 열리고 직접 공개 객체 URL은 거절됨, 폐기 후 객체 삭제, 버킷 제한 초과 파일을 서버 검증 없이 직접 올리면 Storage가 거부(이중 방어 확인), 응답·로그·브라우저 번들(`.next` 산출물)에 비밀 키 문자열이 없음, 삭제 API의 실제 응답 형태가 8.2 가정과 일치.
 4. 불일치가 발견되면 어댑터만 수정한다(서비스 계약 불변).
 
 ---
@@ -756,7 +753,7 @@ ON DELETE CASCADE로 회원·요청 행이 삭제되면 사진 행도 사라져 
 | # | 항목 | 본 설계의 선택 | 대안 |
 | --- | --- | --- | --- |
 | 1 | EXIF 위치정보 — **해소됨(권장안 채택)** | Pillow 디코딩 검증 후 EXIF 방향 보정·메타데이터 제거·같은 포맷 재인코딩(5.2). ICC 미보존으로 인한 경미한 색 차이 허용 | ICC 프로필만 보존하는 선택(메타데이터 최소화와 색 정확도의 절충) |
-| 2 | 버킷 공개 여부 | 공개 버킷 + 추측 불가 경로, URL 비반환 | 비공개 버킷 + 조회마다 일괄 서명 URL(`createSignedUrls`). pending 노출 0이지만 캐시 적중 없음, 조회가 Storage 가용성에 의존 |
+| 2 | 버킷 공개 여부 — **08에서 재결정** | private 버킷 + attached 검사 백엔드 프록시 | 조회마다 일괄 서명 URL(`createSignedUrls`). 토큰 만료 시 열린 화면의 이미지가 깨질 수 있음 |
 | 3 | 한도 수치 | 5장, 장당 3MiB(Vercel 4.5MB 본문 한도에 맞춤), 20MP, 활성 업로드 10장, 만료 24h | 수치 조정(단, 장당 크기는 4.5MB 본문 한도 미만 유지) |
 | 4 | 정리 실행 | 수동 CLI(dry-run 기본) | Vercel Cron → 보호된 내부 엔드포인트(별도 비밀 설정 필요) |
 | 5 | `thumbnail_url` 레거시 컬럼 | 유지·미사용 | 이후 마이그레이션에서 제거 |

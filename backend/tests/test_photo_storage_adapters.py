@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.storage.supabase import SupabasePhotoStorage
+from app.storage.base import StorageError
 
 
 def _settings(**overrides: object) -> Settings:
@@ -53,6 +54,28 @@ def test_supabase_legacy_jwt_bearer_and_malformed_delete_are_sanitized() -> None
     bad = SupabasePhotoStorage("https://project.supabase.co", "sb_secret_hidden", "photos", transport=httpx.MockTransport(lambda _: httpx.Response(200, text="not-json")))
     with pytest.raises(Exception) as exc:
         bad.delete_many(["photos/a.jpg"])
+    assert "sb_secret_hidden" not in str(exc.value)
+
+
+def test_private_object_read_uses_server_secret_and_sanitizes_errors() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, content=b"private-image")
+
+    storage = SupabasePhotoStorage("https://project.supabase.co", "sb_secret_hidden", "private-photos", transport=httpx.MockTransport(handler))
+    assert storage.read("photos/photo.jpg") == b"private-image"
+    assert str(captured[0].url) == "https://project.supabase.co/storage/v1/object/authenticated/private-photos/photos/photo.jpg"
+    assert captured[0].headers["apikey"] == "sb_secret_hidden"
+    assert "authorization" not in captured[0].headers
+
+    missing = SupabasePhotoStorage("https://project.supabase.co", "sb_secret_hidden", "private-photos", transport=httpx.MockTransport(lambda _: httpx.Response(404)))
+    with pytest.raises(FileNotFoundError):
+        missing.read("photos/photo.jpg")
+    failed = SupabasePhotoStorage("https://project.supabase.co", "sb_secret_hidden", "private-photos", transport=httpx.MockTransport(lambda _: httpx.Response(503, text="sb_secret_hidden")))
+    with pytest.raises(StorageError) as exc:
+        failed.read("photos/photo.jpg")
     assert "sb_secret_hidden" not in str(exc.value)
 
 
