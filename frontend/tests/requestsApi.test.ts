@@ -146,7 +146,7 @@ describe('구매요청 API 클라이언트', () => {
       thumbnailUrl: 'javascript:alert(1)',
       photos: [
         { id: 'safe-relative', url: '/api/request-photos/files/00000000-0000-4000-8000-000000000001.jpg' },
-        { id: 'safe-https', url: 'https://cdn.example.com/safe.jpg' },
+        { id: 'old-public', url: 'https://project.supabase.co/storage/v1/object/public/photos/photo.jpg' },
         { id: 'data', url: 'data:image/png;base64,evil' },
         { id: 'scheme-relative', url: '//evil.example/photo.jpg' },
       ],
@@ -156,7 +156,7 @@ describe('구매요청 API 클라이언트', () => {
     const parsed = await requestsApi.getRequest(detail.id);
 
     expect(parsed.thumbnailUrl).toBeNull();
-    expect(parsed.photos).toEqual(unsafe.photos.slice(0, 2));
+    expect(parsed.photos).toEqual(unsafe.photos.slice(0, 1));
   });
 
   it('photos 배열 항목의 계약이 깨지면 INTERNAL_ERROR를 던진다', async () => {
@@ -281,6 +281,7 @@ describe('구매요청 API 클라이언트', () => {
     '/api/request-photos/files/../../auth/me',
     '/api/request-photos/files/%2e%2e/auth/me',
     'javascript:alert(1)',
+    'https://project.supabase.co/storage/v1/object/public/photos/photo.jpg',
   ])('안전하지 않은 사진 URL을 거부한다: %s', (url) => {
     expect(requestsApi.isSafeImageUrl(url)).toBe(false);
   });

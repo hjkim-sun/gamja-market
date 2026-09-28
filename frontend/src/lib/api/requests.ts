@@ -31,21 +31,12 @@ const ALLOWED_FIELD_KEYS = [
 ] as const;
 
 /**
- * `thumbnailUrl`·`photos[].url`에 쓸 수 있는 스킴만 허용한다(설계서 7.1).
- * `javascript:`, `data:`, `//host`(스킴 상대) 등은 거부해 XSS·오픈 리다이렉트 여지를 막는다.
+ * 사진 프록시의 동일 출처 URL만 허용한다(설계서 08).
  */
 export function isSafeImageUrl(url: string): boolean {
   if (/[\u0000-\u0020\u007f\\]/.test(url)) return false;
   if (/^\/api\/request-photos\/files\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/i.test(url)) return true;
-  // 스킴 상대 URL(`//host/...`)은 base를 붙여 절대 URL로 파싱하면 http(s)로 둔갑하므로 먼저 거부한다.
-  if (url.startsWith('//')) return false;
-  if (!/^https?:\/\//i.test(url)) return false;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 function parsePhotos(value: unknown): RequestPhoto[] | null {
