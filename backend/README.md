@@ -2,16 +2,20 @@
 
 Copy `.env.example` to `.env` and provide PostgreSQL credentials. The application starts without running migrations. Migration work is separate from service startup; check the target of `MIGRATION_DATABASE_URL` before running it, since it may point to Supabase.
 
+The example enables Git-ignored local photo storage at `backend/.local-storage`, so JPEG, PNG, and WebP uploads work in development. For production, set `PHOTO_STORAGE_DRIVER=supabase` together with the three server-only `SUPABASE_*` variables; never commit those credentials.
+
 ```sh
 uv sync
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Run the backend test suite with the same environment configuration used by the application:
+Run the backend test suite with the same environment configuration used by the application. The test fixture forces Alembic to the local runtime database and refuses non-loopback hosts; it does not delete test data:
 
 ```sh
 uv run pytest
 ```
+
+For seller-application work, use the fixture-managed explicit `0003_seller_applications` target. Do not run `upgrade head`, `stamp`, or downgrade against the shared database, because `.env` may contain a separate remote `MIGRATION_DATABASE_URL`.
 
 The browser should reach this service through the frontend's same-origin `/api/auth/*` rewrite.  A direct smoke test must send the accepted origin and request header:
 

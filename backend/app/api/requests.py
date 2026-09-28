@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db, get_optional_user, require_auth_post_request
+from app.api.deps import get_current_user, get_db, get_optional_user, get_photo_storage, require_auth_post_request
 from app.api.errors import ApiError
 from app.core.config import Settings, get_settings
 from app.db.models import User
@@ -20,7 +20,7 @@ from app.schemas.requests import (
     RequestListParams,
 )
 from app.services.errors import ServiceUnavailable
-from app.services.requests import RequestNotFound, create_request, get_request, list_requests
+from app.services.requests import InvalidPhotoIds, RequestNotFound, create_request, get_request, list_requests
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
 
@@ -59,6 +59,7 @@ def list_requests_endpoint(
     viewer: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    storage=Depends(get_photo_storage),
 ) -> PurchaseRequestListResponse:
     _no_store(response)
     try:
@@ -67,6 +68,7 @@ def list_requests_endpoint(
             params=params,
             viewer_id=viewer.id if viewer is not None else None,
             settings=settings,
+            namespace=storage.namespace if storage is not None else ("disabled", None),
         )
     except ServiceUnavailable:
         raise ApiError(503, "SERVICE_UNAVAILABLE") from None
@@ -80,6 +82,7 @@ def get_request_endpoint(
     viewer: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    storage=Depends(get_photo_storage),
 ) -> PurchaseRequestDetail:
     _no_store(response)
     try:
@@ -88,6 +91,7 @@ def get_request_endpoint(
             request_id=request_id,
             viewer_id=viewer.id if viewer is not None else None,
             settings=settings,
+            namespace=storage.namespace if storage is not None else ("disabled", None),
         )
     except RequestNotFound:
         raise ApiError(404, "NOT_FOUND") from None
@@ -108,6 +112,7 @@ def create_request_endpoint(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    storage=Depends(get_photo_storage),
 ) -> PurchaseRequestDetail:
     _no_store(response)
     try:
@@ -117,7 +122,10 @@ def create_request_endpoint(
             buyer_email=user.email,
             payload=payload,
             settings=settings,
+            namespace=storage.namespace if storage is not None else ("disabled", None),
         )
+    except InvalidPhotoIds:
+        raise ApiError(422, "VALIDATION_ERROR", fields={"photoIds": "사진을 다시 업로드해 주세요."}) from None
     except ServiceUnavailable:
         raise ApiError(503, "SERVICE_UNAVAILABLE") from None
     return PurchaseRequestDetail.model_validate(result)

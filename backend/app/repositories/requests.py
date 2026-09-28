@@ -5,7 +5,17 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import PurchaseRequest, User
+from app.db.models import PurchaseRequest, SellerApplication, User
+
+
+def _applicant_count_subquery():
+    return (
+        select(func.count())
+        .select_from(SellerApplication)
+        .where(SellerApplication.request_id == PurchaseRequest.id)
+        .correlate(PurchaseRequest)
+        .scalar_subquery()
+    )
 
 
 def create(
@@ -37,9 +47,9 @@ def create(
     return request
 
 
-def get_by_id(db: Session, request_id: UUID) -> tuple[PurchaseRequest, str] | None:
+def get_by_id(db: Session, request_id: UUID) -> tuple[PurchaseRequest, str, int] | None:
     return db.execute(
-        select(PurchaseRequest, User.email)
+        select(PurchaseRequest, User.email, _applicant_count_subquery().label("applicant_count"))
         .join(User, User.id == PurchaseRequest.buyer_id)
         .where(PurchaseRequest.id == request_id)
     ).one_or_none()
@@ -54,7 +64,7 @@ def list_and_count(
     sort: str | None,
     page: int,
     page_size: int,
-) -> tuple[list[tuple[PurchaseRequest, str]], int]:
+) -> tuple[list[tuple[PurchaseRequest, str, int]], int]:
     conditions = []
     if q is not None:
         escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -65,7 +75,8 @@ def list_and_count(
     if status == "open":
         conditions.append(PurchaseRequest.status == "open")
 
-    statement = select(PurchaseRequest, User.email).join(User, User.id == PurchaseRequest.buyer_id)
+    applicant_count = _applicant_count_subquery().label("applicant_count")
+    statement = select(PurchaseRequest, User.email, applicant_count).join(User, User.id == PurchaseRequest.buyer_id)
     if conditions:
         statement = statement.where(*conditions)
 
@@ -73,8 +84,11 @@ def list_and_count(
         statement = statement.order_by(
             PurchaseRequest.price_max.desc(), PurchaseRequest.created_at.desc(), PurchaseRequest.id.desc()
         )
+    elif sort == "applicants":
+        statement = statement.order_by(
+            applicant_count.desc(), PurchaseRequest.created_at.desc(), PurchaseRequest.id.desc()
+        )
     else:
-        # "applicants" has no distinct ordering until the applicants table is introduced.
         statement = statement.order_by(PurchaseRequest.created_at.desc(), PurchaseRequest.id.desc())
 
     rows = db.execute(statement.offset((page - 1) * page_size).limit(page_size)).all()

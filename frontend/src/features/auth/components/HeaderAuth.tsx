@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -11,6 +12,7 @@ const authLinkClassName =
 
 export function HeaderAuth() {
   const { status, user, error, authRouteMissing, refresh, logout } = useAuth();
+  const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
 
@@ -21,6 +23,9 @@ export function HeaderAuth() {
 
     try {
       await logout();
+      // 인증 전환 후 SSR로 렌더된 비공개 데이터(지원 목록·채팅방 등)가
+      // 로그아웃 뒤에도 화면에 남지 않도록 서버 컴포넌트를 다시 가져온다(설계서 11.5).
+      router.refresh();
     } catch {
       // 실패 시 사용자 상태를 유지하고 재시도 안내만 보여준다.
       setLogoutError('로그아웃에 실패했어요. 다시 시도해 주세요.');

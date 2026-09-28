@@ -5,6 +5,7 @@ import type {
   PurchaseRequestDetail,
   PurchaseRequestSummary,
   RequestListEnvelope,
+  RequestPhoto,
 } from '@/types/request';
 
 /**
@@ -26,7 +27,31 @@ const ALLOWED_FIELD_KEYS = [
   'q',
   'sort',
   'status',
+  'photoIds',
 ] as const;
+
+/**
+ * 사진 프록시의 동일 출처 URL만 허용한다(설계서 08).
+ */
+export function isSafeImageUrl(url: string): boolean {
+  if (/[\u0000-\u0020\u007f\\]/.test(url)) return false;
+  if (/^\/api\/request-photos\/files\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/i.test(url)) return true;
+  return false;
+}
+
+function parsePhotos(value: unknown): RequestPhoto[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+
+  const photos: RequestPhoto[] = [];
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.id !== 'string' || typeof item.url !== 'string') {
+      return null;
+    }
+    if (isSafeImageUrl(item.url)) photos.push({ id: item.id, url: item.url });
+  }
+  return photos;
+}
 
 interface RequestOpts {
   signal?: AbortSignal;
@@ -86,7 +111,7 @@ function parseSummary(value: unknown): PurchaseRequestSummary | null {
     priceMax,
     region,
     status,
-    thumbnailUrl,
+    thumbnailUrl: thumbnailUrl !== null && isSafeImageUrl(thumbnailUrl) ? thumbnailUrl : null,
     applicantCount,
     createdAt,
     isOwner,
@@ -97,13 +122,15 @@ function parseDetail(value: unknown): PurchaseRequestDetail | null {
   const summary = parseSummary(value);
   if (!summary || !isRecord(value)) return null;
 
-  const { description, updatedAt, buyer } = value;
+  const { description, updatedAt, buyer, photos: photosValue } = value;
+  const photos = parsePhotos(photosValue);
   if (
     typeof description !== 'string' ||
     typeof updatedAt !== 'string' ||
     !isRecord(buyer) ||
     typeof buyer.id !== 'string' ||
-    typeof buyer.maskedEmail !== 'string'
+    typeof buyer.maskedEmail !== 'string' ||
+    photos === null
   ) {
     return null;
   }
@@ -113,6 +140,7 @@ function parseDetail(value: unknown): PurchaseRequestDetail | null {
     description,
     updatedAt,
     buyer: { id: buyer.id, maskedEmail: buyer.maskedEmail },
+    photos,
   };
 }
 
@@ -194,7 +222,10 @@ export async function createRequest(
   payload: CreateRequestPayload,
   signal?: AbortSignal,
 ): Promise<PurchaseRequestDetail> {
-  const response = await request('', postInit(payload, signal), REQUESTS_BASE);
+  // 빈 photoIds는 키 자체를 생략해 레거시 요청과 바이트 단위로 같은 JSON을 보낸다(설계서 7.1).
+  const { photoIds, ...rest } = payload;
+  const requestBody = photoIds && photoIds.length > 0 ? { ...rest, photoIds } : rest;
+  const response = await request('', postInit(requestBody, signal), REQUESTS_BASE);
 
   if (!response.ok) throw await toApiError(response, ALLOWED_FIELD_KEYS);
 
