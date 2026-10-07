@@ -60,6 +60,23 @@ describe('HeaderAuth', () => {
     expect(screen.queryByRole('link', { name: '로그인' })).not.toBeInTheDocument();
   });
 
+  it('로그인 상태에서만 채팅 목록 링크를 보여준다', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(async () => me401()));
+    const { unmount } = render(
+      <AuthProvider>
+        <HeaderAuth />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole('link', { name: '로그인' })).toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: '채팅' })).not.toBeInTheDocument();
+    unmount();
+
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(async () => meOk()));
+    renderHeader();
+    await waitFor(() => expect(screen.getByRole('link', { name: '채팅' })).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: '채팅' })).toHaveAttribute('href', '/chats');
+  });
+
   it('/me 503은 비로그인이 아니라 확인 실패로 구분하고 재시도할 수 있다', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

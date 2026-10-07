@@ -25,6 +25,62 @@ def lock_request_for_application(db: Session, request_id: UUID) -> tuple[Purchas
     ).one_or_none()
 
 
+def lock_request_for_match(db: Session, request_id: UUID) -> PurchaseRequest | None:
+    return db.scalar(
+        select(PurchaseRequest)
+        .where(PurchaseRequest.id == request_id)
+        .with_for_update(key_share=True, of=PurchaseRequest)
+    )
+
+
+def lock_application_in_request(db: Session, *, request_id: UUID, application_id: UUID) -> SellerApplication | None:
+    return db.scalar(
+        select(SellerApplication)
+        .where(SellerApplication.request_id == request_id, SellerApplication.id == application_id)
+        .with_for_update(of=SellerApplication)
+    )
+
+
+def accept_application(db: Session, *, application_id: UUID) -> int:
+    from sqlalchemy import func, update
+
+    result = db.execute(
+        update(SellerApplication)
+        .where(SellerApplication.id == application_id, SellerApplication.status == "pending")
+        .values(status="accepted", decided_at=func.now())
+    )
+    return result.rowcount or 0
+
+
+def close_other_pending(db: Session, *, request_id: UUID, application_id: UUID) -> list[UUID]:
+    from sqlalchemy import func, update
+
+    result = db.execute(
+        update(SellerApplication)
+        .where(
+            SellerApplication.request_id == request_id,
+            SellerApplication.id != application_id,
+            SellerApplication.status == "pending",
+        )
+        .values(status="closed", decided_at=func.now())
+        .returning(SellerApplication.id)
+    )
+    return list(result.scalars())
+
+
+def count_closed(db: Session, request_id: UUID) -> int:
+    from sqlalchemy import func
+
+    return int(
+        db.scalar(
+            select(func.count()).select_from(SellerApplication).where(
+                SellerApplication.request_id == request_id, SellerApplication.status == "closed"
+            )
+        )
+        or 0
+    )
+
+
 def insert_application(
     db: Session,
     *,

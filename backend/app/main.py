@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -74,16 +76,42 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         "offerPrice": "제시가는 0원 이상 10억원 이하의 정수로 입력해 주세요.",
         "message": "지원 메시지는 2자 이상 500자 이하로 입력해 주세요.",
     }
+    match_fields = {"applicationId": "확정할 지원을 선택해 주세요."}
+    message_fields = {
+        "body": "메시지는 1자 이상 1000자 이하로 입력해 주세요.",
+        "clientMessageId": "입력값을 확인해 주세요.",
+        "afterSeq": "입력값을 확인해 주세요.",
+        "limit": "입력값을 확인해 주세요.",
+    }
+    chat_list_fields = {"limit": "입력값을 확인해 주세요."}
     path = request.url.path
-    is_application_path = path.startswith("/api/requests/") and path.endswith("/applications")
-    allowed = application_fields if is_application_path else request_fields if path.startswith("/api/requests") else auth_fields
+    if re.fullmatch(r"/api/requests/[^/]+/applications", path):
+        allowed = application_fields
+    elif re.fullmatch(r"/api/requests/[^/]+/match", path):
+        allowed = match_fields
+    elif re.fullmatch(r"/api/chat-rooms/[^/]+/messages", path):
+        allowed = message_fields
+    elif path.startswith("/api/chat-rooms"):
+        allowed = chat_list_fields
+    elif path.startswith("/api/requests"):
+        allowed = request_fields
+    else:
+        allowed = auth_fields
     fields: dict[str, str] = {}
     # Never serialize Pydantic's input/context: they can contain password values.
     for error in exc.errors():
         location = error.get("loc", ())
-        field = next((part for part in location if isinstance(part, str) and part in allowed), None)
+        field_location = location[1:] if location and location[0] == "body" else location
+        field = next((part for part in field_location if isinstance(part, str) and part in allowed), None)
+        if field is None:
+            aliases = {"client_message_id": "clientMessageId", "after_seq": "afterSeq"}
+            field = next((aliases.get(part) for part in field_location if isinstance(part, str) and aliases.get(part) in allowed), None)
         if isinstance(field, str) and field in allowed and field not in fields:
             fields[field] = allowed[field]
+    if not fields and re.fullmatch(r"/api/requests/[^/]+/match", path):
+        fields["applicationId"] = match_fields["applicationId"]
+    if not fields and re.fullmatch(r"/api/chat-rooms/[^/]+/messages", path) and request.method == "POST":
+        fields["body"] = message_fields["body"]
     return _api_no_store(error_response(422, "VALIDATION_ERROR", fields=fields), path)
 
 

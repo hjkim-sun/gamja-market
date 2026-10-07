@@ -5,8 +5,15 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { ApplyForm } from '@/features/applications/components/ApplyForm';
-import type { Application, ApplicationViewerRole } from '@/types/application';
+import type { Application, ApplicationStatus, ApplicationViewerRole } from '@/types/application';
 import type { RequestStatus } from '@/types/request';
+
+/** 지원 상태별 안내 문구와 링크 이름(설계서 10.6). */
+const applicantCopy: Record<ApplicationStatus, { message: string; link: string }> = {
+  pending: { message: '지원 완료 · 채팅방에서 거래 조건을 협의해 보세요.', link: '채팅방 열기' },
+  accepted: { message: '구매자가 회원님을 판매자로 확정했어요!', link: '채팅방 열기' },
+  closed: { message: '다른 판매자와 매칭되어 지원이 마감되었어요.', link: '대화 기록 보기' },
+};
 
 interface ApplyPanelProps {
   requestId: string;
@@ -55,15 +62,18 @@ export function ApplyPanel({
   }
 
   if (viewerRole === 'applicant' && application) {
+    const copy = applicantCopy[application.status];
     return (
       <div className="sticky bottom-0 z-30 -mx-4 mt-10 border-t border-stone-200 bg-white/95 px-4 py-4 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4">
-          <p className="text-sm font-bold text-leaf-700">지원 완료 · 채팅방에서 진행 상황을 확인하세요.</p>
+          <p className={`text-sm font-bold ${application.status === 'closed' ? 'text-stone-600' : 'text-leaf-700'}`}>
+            {copy.message}
+          </p>
           <Link
             href={`/chats/${application.chatRoomId}`}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 sm:ml-auto sm:w-auto sm:min-w-48"
           >
-            채팅방 열기
+            {copy.link}
           </Link>
         </div>
       </div>

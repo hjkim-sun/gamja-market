@@ -75,8 +75,9 @@ def test_apply_creates_application_and_room(parties, post_headers, db_engine, te
     assert room["viewerRole"] == "seller"
     assert application["offerPrice"] == 700_000
     assert application["message"] == f"{APPLICATION_MESSAGE} (0)"
+    assert application["status"] == "pending"
     assert set(application) == {
-        "id", "requestId", "seller", "offerPrice", "message", "chatRoomId", "createdAt"
+        "id", "requestId", "seller", "offerPrice", "message", "chatRoomId", "createdAt", "status"
     }
     assert_original_emails_absent(
         response,
