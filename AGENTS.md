@@ -48,4 +48,10 @@ docs/specs 디렉토리안에 구현 단계별로 순번을 붙여 md 파일로 
 검증했던 DB데이터는 삭제하지 않고 그대로 보존한다. 
 
 ## PR 처리 지침 
-master 브랜치로 pr merge를 수행할 때는 `pr-merge`스킬을 사용한다. 
+develop/master 브랜치로 pr merge를 수행할 때는 `pr-merge`스킬을 사용한다. 
+
+## 컨텍스트 압축을 위한 지침
+컨텍스트가 압축될 경우에 대비하여 모든 터미널은 자신의 터미널 ID를 이용하여 _workspace/yyyy-mm-dd/{terminalId} 디렉토리를 생성한다.  
+그리고 모든 터미널은 작업 시작시 GOAL.md를 생성하여 자신이 맡은 목표를 자세히 기입한다. 
+또한 주요 진행상황 또는 Orca Orchestration 관련 중요 정보가 있을 때마다 PROGRESS.md에 진행 상황을 기록한다.
+압축이 완료되면 GOAL.md 및 PROGRESS.md 를 가장 먼저 읽으며 PROGRESS.md를 지속적으로 누적하여 관리한다. 

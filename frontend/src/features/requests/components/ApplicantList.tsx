@@ -1,18 +1,34 @@
 import Link from 'next/link';
 
 import { Card } from '@/components/ui/Card';
+import { ApplicationStatusBadge } from '@/components/ui/StatusBadges';
+import { ConfirmMatchButton } from '@/features/matching/components/ConfirmMatchButton';
 import { formatExactWon, formatRelativeTime } from '@/lib/format';
 import type { Application, ApplicationViewerRole } from '@/types/application';
+import type { RequestStatus } from '@/types/request';
 
 interface ApplicantListProps {
   applicantCount: number;
   viewerRole: ApplicationViewerRole;
   applications: Application[];
+  requestStatus: RequestStatus;
 }
 
-export function ApplicantList({ applicantCount, viewerRole, applications }: ApplicantListProps) {
-  const canSeeDetail = viewerRole === 'owner' || viewerRole === 'applicant';
+function pendingCount(applications: Application[]): number {
+  return applications.filter((application) => application.status === 'pending').length;
+}
 
+/** 서버 순서는 유지하되, 확정된 지원은 목록 맨 위로 올려 강조한다(설계서 10.5). */
+function acceptedFirst(applications: Application[]): Application[] {
+  return [
+    ...applications.filter((application) => application.status === 'accepted'),
+    ...applications.filter((application) => application.status !== 'accepted'),
+  ];
+}
+
+export function ApplicantList({ applicantCount, viewerRole, applications, requestStatus }: ApplicantListProps) {
+  const canSeeDetail = viewerRole === 'owner' || viewerRole === 'applicant';
+  const canConfirm = viewerRole === 'owner' && requestStatus === 'open';
   return (
     <section className="mt-10" aria-labelledby="applicant-heading">
       <div className="mb-4 flex items-end justify-between">
@@ -37,8 +53,11 @@ export function ApplicantList({ applicantCount, viewerRole, applications }: Appl
         </div>
       ) : (
         <div className="space-y-3">
-          {applications.map((application) => (
-            <Card key={application.id} className="p-5 sm:p-6">
+          {acceptedFirst(applications).map((application) => (
+            <Card
+              key={application.id}
+              className={`p-5 sm:p-6 ${application.status === 'accepted' ? 'ring-2 ring-blue-500/40' : ''}`}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="grid size-11 shrink-0 place-items-center rounded-full bg-potato-100 text-xl" aria-hidden="true">
@@ -46,6 +65,9 @@ export function ApplicantList({ applicantCount, viewerRole, applications }: Appl
                   </div>
                   <div className="min-w-0">
                     <p className="truncate font-bold text-stone-900">{application.seller.maskedEmail}</p>
+                    <div className="mt-1">
+                      <ApplicationStatusBadge status={application.status} />
+                    </div>
                   </div>
                 </div>
                 <div className="sm:text-right">
@@ -67,6 +89,14 @@ export function ApplicantList({ applicantCount, viewerRole, applications }: Appl
                   채팅방 열기
                 </Link>
               </div>
+              {canConfirm && application.status === 'pending' ? (
+                <ConfirmMatchButton
+                  requestId={application.requestId}
+                  applicationId={application.id}
+                  pendingOthers={pendingCount(applications) - 1}
+                  className="mt-4"
+                />
+              ) : null}
             </Card>
           ))}
         </div>

@@ -47,6 +47,7 @@ def _application_data(application, room_id: UUID, seller_email: str) -> dict[str
         "message": application.message,
         "chat_room_id": room_id,
         "created_at": application.created_at,
+        "status": application.status,
     }
 
 
@@ -62,7 +63,11 @@ def _room_data(
     offer_price: int,
     message: str,
     viewer_role: str,
+    application_status: str = "pending",
 ) -> ApplyResponse:
+    from app.services.chat import derive_chat_status
+
+    chat_status = derive_chat_status(application_status, request.status)
     return {
         "id": room_id,
         "application_id": application_id,
@@ -79,6 +84,9 @@ def _room_data(
         "offer_price": offer_price,
         "application_message": message,
         "created_at": room_created_at,
+        "application_status": application_status,
+        "chat_status": chat_status,
+        "can_send": chat_status in {"active", "matched"},
     }
 
 
@@ -140,6 +148,7 @@ def apply_to_request(
             "message": payload.message,
             "chat_room_id": room_id,
             "created_at": application_created_at,
+            "status": "pending",
         }
         room_data = _room_data(
             room_id=room_id,
@@ -152,6 +161,7 @@ def apply_to_request(
             offer_price=payload.offer_price,
             message=payload.message,
             viewer_role="seller",
+            application_status="pending",
         )
         response = ApplyResponse.model_validate({"application": application_data, "chat_room": room_data})
         db.commit()
@@ -229,6 +239,7 @@ def get_chat_room(
             offer_price=application.offer_price,
             message=application.message,
             viewer_role="buyer" if viewer.id == application.buyer_id else "seller",
+            application_status=application.status,
         )
     except ChatRoomNotFound:
         raise

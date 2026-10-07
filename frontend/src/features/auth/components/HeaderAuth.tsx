@@ -69,6 +69,9 @@ export function HeaderAuth() {
     return (
       <div className="flex min-w-0 flex-col items-end">
         <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+          <Link href="/chats" className={authLinkClassName}>
+            채팅
+          </Link>
           <span
             className="hidden min-w-0 max-w-[9rem] truncate text-sm font-semibold text-stone-700 md:inline lg:max-w-[12rem]"
             title={user.email}

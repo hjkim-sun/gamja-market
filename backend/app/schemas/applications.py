@@ -32,6 +32,7 @@ class ApplicationView(RequestSchema):
     message: str
     chat_room_id: UUID
     created_at: datetime
+    status: Literal["pending", "accepted", "closed"]
 
 
 class ApplicationListResponse(RequestSchema):
@@ -58,8 +59,27 @@ class ChatRoomView(RequestSchema):
     offer_price: int
     application_message: str
     created_at: datetime
+    application_status: Literal["pending", "accepted", "closed"]
+    chat_status: Literal["active", "matched", "closed"]
+    can_send: bool
 
 
 class ApplyResponse(RequestSchema):
     application: ApplicationView
     chat_room: ChatRoomView
+
+
+class MatchCreate(RequestSchema):
+    application_id: UUID
+
+
+class MatchRequestSummary(RequestSchema):
+    id: UUID
+    status: Literal["matched"]
+
+
+class MatchResponse(RequestSchema):
+    request: MatchRequestSummary
+    accepted_application_id: UUID
+    chat_room_id: UUID
+    closed_application_count: int = Field(ge=0)

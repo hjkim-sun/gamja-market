@@ -2,14 +2,18 @@ import Link from 'next/link';
 
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { ChatMessagePanel } from '@/features/chat/components/ChatMessagePanel';
 import { formatDateTime, formatExactWon, formatPriceRange } from '@/lib/format';
 import type { ChatRoom } from '@/types/application';
+import type { MessageList } from '@/types/chat';
 
 interface ChatRoomViewProps {
   room: ChatRoom;
+  /** SSR로 받은 첫 메시지. 실패했으면 null이며 클라이언트 첫 폴링이 다시 시도한다. */
+  initialMessages?: MessageList | null;
 }
 
-export function ChatRoomView({ room }: ChatRoomViewProps) {
+export function ChatRoomView({ room, initialMessages = null }: ChatRoomViewProps) {
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-2 text-sm text-stone-500">
@@ -57,10 +61,7 @@ export function ChatRoomView({ room }: ChatRoomViewProps) {
         </div>
       </Card>
 
-      <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-white px-5 py-10 text-center">
-        <span className="text-3xl" aria-hidden="true">💬</span>
-        <p className="mt-3 font-bold text-stone-700">메시지 기능을 준비하고 있어요.</p>
-      </div>
+      <ChatMessagePanel room={room} initialList={initialMessages} />
     </div>
   );
 }

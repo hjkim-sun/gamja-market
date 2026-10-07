@@ -64,6 +64,8 @@ def _alembic_config() -> Config:
 
 def _explicit_migration_target(config: Config) -> str:
     known = {revision.revision for revision in ScriptDirectory.from_config(config).walk_revisions()}
+    if "0005_chat_matching" in known:
+        return "0005_chat_matching"
     if "0004_request_photos" in known:
         return "0004_request_photos"
     # The RED owner runs before 0003 exists. Never use head/heads: advance only to
