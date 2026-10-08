@@ -64,7 +64,7 @@ def list_messages(db: Session, *, room_id: UUID, viewer: User, params: MessageLi
             has_more = len(rows) > params.limit
             items = rows[:params.limit]
             has_older = False
-        latest_seq = message_repository.max_seq(db, room_id)
+        latest_seq = items[-1].seq if items else 0
         return {
             "room": {
                 "id": room.id,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select, text
+from sqlalchemy import case, func, or_, select, text, true
 from sqlalchemy.orm import Session, aliased
 
 from app.db.models import ChatMessage, ChatRoom, PurchaseRequest, SellerApplication, User
@@ -61,10 +61,13 @@ def lock_for_send(db: Session, *, room_id: UUID, viewer_id: UUID):
 def list_for_user(db: Session, *, viewer_id: UUID, limit: int):
     latest_message = (
         select(
-            ChatMessage.room_id.label("room_id"), ChatMessage.body.label("body"),
+            ChatMessage.body.label("body"),
             ChatMessage.sender_id.label("sender_id"), ChatMessage.created_at.label("created_at"),
-            func.row_number().over(partition_by=ChatMessage.room_id, order_by=ChatMessage.seq.desc()).label("rn"),
-        ).subquery()
+        )
+        .where(ChatMessage.room_id == ChatRoom.id)
+        .order_by(ChatMessage.seq.desc())
+        .limit(1)
+        .lateral("latest_message")
     )
     other_id = case(
         (SellerApplication.buyer_id == viewer_id, SellerApplication.seller_id), else_=SellerApplication.buyer_id
@@ -79,7 +82,7 @@ def list_for_user(db: Session, *, viewer_id: UUID, limit: int):
             .join(SellerApplication, SellerApplication.id == ChatRoom.application_id)
             .join(PurchaseRequest, PurchaseRequest.id == SellerApplication.request_id)
             .join(counterpart, counterpart.id == other_id)
-            .outerjoin(latest_message, (latest_message.c.room_id == ChatRoom.id) & (latest_message.c.rn == 1))
+            .outerjoin(latest_message, true())
             .where(or_(SellerApplication.buyer_id == viewer_id, SellerApplication.seller_id == viewer_id))
             .order_by(func.coalesce(latest_message.c.created_at, ChatRoom.created_at).desc(), ChatRoom.id.desc())
             .limit(limit + 1)
