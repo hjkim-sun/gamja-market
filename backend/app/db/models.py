@@ -131,8 +131,16 @@ class SellerApplication(Base):
         CheckConstraint(
             "char_length(btrim(message)) BETWEEN 2 AND 500", name="ck_seller_applications_message_len"
         ),
+        CheckConstraint("status IN ('pending', 'accepted', 'closed')", name="ck_seller_applications_status"),
+        CheckConstraint("(status = 'pending') = (decided_at IS NULL)", name="ck_seller_applications_decided_at"),
         Index("ix_seller_applications_request_created", "request_id", "created_at", "id"),
         Index("ix_seller_applications_seller_id", "seller_id"),
+        Index(
+            "uq_seller_applications_one_accepted",
+            "request_id",
+            unique=True,
+            postgresql_where=text("status = 'accepted'"),
+        ),
         {"schema": "app_private"},
     )
 
@@ -147,6 +155,8 @@ class SellerApplication(Base):
     offer_price: Mapped[int] = mapped_column(Integer, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    status: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'pending'"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ChatRoom(Base):
@@ -162,4 +172,30 @@ class ChatRoom(Base):
         ForeignKey("app_private.seller_applications.id", ondelete="CASCADE", name="fk_chat_rooms_application"),
         nullable=False,
     )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["room_id"], ["app_private.chat_rooms.id"], ondelete="CASCADE", name="fk_chat_messages_room"
+        ),
+        ForeignKeyConstraint(
+            ["sender_id"], ["app_private.users.id"], ondelete="CASCADE", name="fk_chat_messages_sender"
+        ),
+        UniqueConstraint("room_id", "seq", name="uq_chat_messages_room_seq"),
+        UniqueConstraint("room_id", "sender_id", "client_message_id", name="uq_chat_messages_client_id"),
+        CheckConstraint("seq >= 1", name="ck_chat_messages_seq_positive"),
+        CheckConstraint("char_length(btrim(body)) BETWEEN 1 AND 1000", name="ck_chat_messages_body_len"),
+        Index("ix_chat_messages_sender_id", "sender_id"),
+        {"schema": "app_private"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    room_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    sender_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    client_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

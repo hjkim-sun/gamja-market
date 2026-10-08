@@ -8,6 +8,7 @@ const application = {
   id: 'application-1',
   requestId,
   seller: { id: 'seller-1', maskedEmail: 'se***@example.com' },
+  status: 'pending' as const,
   offerPrice: 750_000,
   message: '구성품을 모두 보유하고 있습니다.',
   chatRoomId: 'room-1',
@@ -17,13 +18,14 @@ const application = {
 function renderPanel(
   viewerRole: 'owner' | 'applicant' | 'member' | 'anonymous',
   status: 'open' | 'matched' | 'closed' = 'open',
+  applicationStatus: 'pending' | 'accepted' | 'closed' = 'pending',
 ) {
   return render(
     <ApplyPanel
       requestId={requestId}
       requestStatus={status}
       viewerRole={viewerRole}
-      application={viewerRole === 'applicant' ? application : null}
+      application={viewerRole === 'applicant' ? { ...application, status: applicationStatus } : null}
       priceMin={600_000}
       priceMax={800_000}
     />,
@@ -48,8 +50,26 @@ describe('ApplyPanel', () => {
 
   it('지원자는 기존 채팅방 링크를 본다', () => {
     renderPanel('applicant');
-    expect(screen.getByText(/지원 완료/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /채팅방/ })).toHaveAttribute('href', '/chats/room-1');
+    expect(screen.getByText('지원 완료 · 채팅방에서 거래 조건을 협의해 보세요.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '채팅방 열기' })).toHaveAttribute('href', '/chats/room-1');
+  });
+
+  it('확정된 지원자는 확정 안내와 채팅방 링크를 본다', () => {
+    renderPanel('applicant', 'matched', 'accepted');
+    expect(screen.getByText('구매자가 회원님을 판매자로 확정했어요!')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '채팅방 열기' })).toHaveAttribute('href', '/chats/room-1');
+  });
+
+  it('마감된 지원자는 마감 안내와 대화 기록 링크를 본다', () => {
+    renderPanel('applicant', 'matched', 'closed');
+    expect(screen.getByText('다른 판매자와 매칭되어 지원이 마감되었어요.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '대화 기록 보기' })).toHaveAttribute('href', '/chats/room-1');
+  });
+
+  it('matched 요청의 비참여 회원은 기존 마감 비활성 버튼을 본다', () => {
+    renderPanel('member', 'matched');
+    expect(screen.getByText('모집이 마감된 요청입니다')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '지원하기' })).not.toBeInTheDocument();
   });
 
   it('비참여 회원은 열린 요청에 지원할 수 있고 마감 요청에는 비활성 안내를 본다', () => {

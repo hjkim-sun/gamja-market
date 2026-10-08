@@ -17,7 +17,11 @@ export type ApiErrorCode =
   | 'PAYLOAD_TOO_LARGE'
   | 'INVALID_IMAGE'
   | 'PHOTO_LIMIT_EXCEEDED'
-  | 'PHOTO_STORAGE_UNAVAILABLE';
+  | 'PHOTO_STORAGE_UNAVAILABLE'
+  | 'NOT_REQUEST_OWNER'
+  | 'REQUEST_ALREADY_MATCHED'
+  | 'REQUEST_CLOSED'
+  | 'CHAT_ROOM_CLOSED';
 
 export type ApiErrorFields = Partial<Record<string, string>>;
 

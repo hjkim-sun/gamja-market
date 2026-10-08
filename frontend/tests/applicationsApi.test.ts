@@ -10,6 +10,7 @@ const application = {
   id: applicationId,
   requestId,
   seller: { id: 'seller-1', maskedEmail: 'se***@example.com' },
+  status: 'pending' as const,
   offerPrice: 750_000,
   message: '박스와 구성품을 모두 보유하고 있습니다.',
   chatRoomId: roomId,
@@ -18,6 +19,9 @@ const application = {
 const chatRoom = {
   id: roomId,
   applicationId,
+  applicationStatus: 'pending' as const,
+  chatStatus: 'active' as const,
+  canSend: true,
   viewerRole: 'seller' as const,
   request: {
     id: requestId,
@@ -75,6 +79,11 @@ describe('applications API', () => {
     { application: { ...application, chatRoomId: 3 }, chatRoom },
     { application, chatRoom: { ...chatRoom, viewerRole: 'owner' } },
     { application, chatRoom: { ...chatRoom, seller: { id: 'seller-1' } } },
+    { application: { ...application, status: 'won' }, chatRoom },
+    { application: { ...application, status: undefined }, chatRoom },
+    { application, chatRoom: { ...chatRoom, chatStatus: 'archived' } },
+    { application, chatRoom: { ...chatRoom, canSend: 'yes' } },
+    { application, chatRoom: { ...chatRoom, applicationStatus: undefined } },
   ])('형태가 잘못된 성공 응답은 INTERNAL_ERROR다', async (body) => {
     stubFetch(async () => jsonResponse(201, body));
     const caught = await applicationsApi
@@ -183,6 +192,79 @@ describe('applications API', () => {
     );
     await expect(applicationsApi.getChatRoom(roomId)).rejects.toMatchObject({
       code: 'UNAUTHENTICATED',
+    });
+  });
+
+  describe('confirmMatch', () => {
+    const matchResult = {
+      request: { id: requestId, status: 'matched' as const },
+      acceptedApplicationId: applicationId,
+      chatRoomId: roomId,
+      closedApplicationCount: 2,
+    };
+
+    it('보안 헤더와 applicationId만 POST하고 200 응답을 파싱한다', async () => {
+      const fetchMock = stubFetch(async () => jsonResponse(200, matchResult));
+
+      await expect(applicationsApi.confirmMatch(requestId, applicationId)).resolves.toEqual(matchResult);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/requests/${requestId}/match`);
+      expect(init).toMatchObject({
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'gamja-market' },
+      });
+      expect(JSON.parse(String(init.body))).toEqual({ applicationId });
+    });
+
+    it.each([
+      { ...matchResult, request: { id: requestId, status: 'open' } },
+      { ...matchResult, closedApplicationCount: '2' },
+      { ...matchResult, chatRoomId: undefined },
+      null,
+    ])('형태가 잘못된 성공 응답은 INTERNAL_ERROR다', async (body) => {
+      stubFetch(async () => jsonResponse(200, body));
+      await expect(applicationsApi.confirmMatch(requestId, applicationId)).rejects.toMatchObject({
+        code: 'INTERNAL_ERROR',
+      });
+    });
+
+    it.each([
+      [403, 'NOT_REQUEST_OWNER'],
+      [409, 'REQUEST_ALREADY_MATCHED'],
+      [409, 'REQUEST_CLOSED'],
+      [404, 'NOT_FOUND'],
+    ])('새 오류 code %s/%s를 그대로 전달한다', async (status, code) => {
+      stubFetch(async () => jsonResponse(status, { error: { code, message: '계약 오류', fields: {} } }));
+      const caught = await applicationsApi
+        .confirmMatch(requestId, applicationId)
+        .catch((error: unknown) => error);
+      expect(caught).toBeInstanceOf(ApiError);
+      expect((caught as ApiError).code).toBe(code);
+      expect((caught as ApiError).status).toBe(status);
+    });
+
+    it('422는 applicationId 필드 메시지만 보존하고 깨진 409는 auth 오류로 오인하지 않는다', async () => {
+      const fetchMock = stubFetch(async () =>
+        jsonResponse(422, {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: '입력값을 확인해 주세요.',
+            fields: { applicationId: '확정할 지원을 선택해 주세요.', other: '무시' },
+          },
+        }),
+      );
+      const validation = await applicationsApi
+        .confirmMatch(requestId, applicationId)
+        .catch((error: unknown) => error);
+      expect((validation as ApiError).fields).toEqual({ applicationId: '확정할 지원을 선택해 주세요.' });
+
+      fetchMock.mockImplementationOnce(async () => jsonResponse(409, { broken: true }));
+      const malformed = await applicationsApi
+        .confirmMatch(requestId, applicationId)
+        .catch((error: unknown) => error);
+      expect((malformed as ApiError).code).toBe('INTERNAL_ERROR');
     });
   });
 });

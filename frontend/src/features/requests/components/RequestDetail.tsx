@@ -83,6 +83,7 @@ export function RequestDetail({ request, applications, viewerRole, applicantCoun
         applicantCount={applicantCount}
         viewerRole={viewerRole ?? 'anonymous'}
         applications={applications}
+        requestStatus={request.status}
       />
 
       {viewerRole ? (
