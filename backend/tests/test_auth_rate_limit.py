@@ -139,6 +139,33 @@ def test_other_user_and_window_expiry_pass(client, post_headers, rate_limited_se
     assert _login(client, post_headers, email, ip).status_code == 401
 
 
+
+def test_window_reset_allows_a_new_email_bucket(client, post_headers, rate_limited_settings, monkeypatch, test_ns, db_engine):
+    _speed_up_password_checks(monkeypatch)
+    import app.core.security as security
+
+    ip = _ip(test_ns)
+    rejected_email = ns_email(test_ns, "reset-rejected")
+    fresh_email = ns_email(test_ns, "reset-fresh")
+    for index in range(3):
+        assert _login(client, post_headers, ns_email(test_ns, f"reset-fill-{index}"), ip).status_code == 401
+    _assert_limited(_login(client, post_headers, rejected_email, ip))
+
+    now = security.utcnow()
+    monkeypatch.setattr(security, "utcnow", lambda: now + timedelta(seconds=601))
+    assert _login(client, post_headers, fresh_email, ip).status_code == 401
+
+    fresh_email_key = hashlib.sha256(f"login:email:{fresh_email}".encode()).hexdigest()
+    rejected_email_key = hashlib.sha256(f"login:email:{rejected_email}".encode()).hexdigest()
+    with db_engine.connect() as connection:
+        keys = set(connection.scalars(
+            text("SELECT bucket_key FROM app_private.auth_rate_limits WHERE bucket_key = ANY(:keys)"),
+            {"keys": [fresh_email_key, rejected_email_key]},
+        ))
+    assert fresh_email_key in keys
+    assert rejected_email_key not in keys
+
+
 def test_signup_ip_limit_and_mismatch_not_counted(client, post_headers, rate_limited_settings, monkeypatch, test_ns):
     _speed_up_password_checks(monkeypatch)
     ip = _ip(test_ns)
@@ -260,13 +287,67 @@ def test_concurrent_consumption_is_atomic(post_headers, rate_limited_settings, m
     with ThreadPoolExecutor(max_workers=8) as pool:
         responses = list(pool.map(one_request, range(8)))
     assert sorted(response.status_code for response in responses) == [401, 401, 429, 429, 429, 429, 429, 429]
-    keys = [
-        hashlib.sha256(f"login:ip:{_ip_bucket_value(ip)}".encode()).hexdigest(),
-        hashlib.sha256(f"login:email:{email}".encode()).hexdigest(),
-    ]
+    ip_key = hashlib.sha256(f"login:ip:{_ip_bucket_value(ip)}".encode()).hexdigest()
+    email_key = hashlib.sha256(f"login:email:{email}".encode()).hexdigest()
     with db_engine.connect() as connection:
-        counts = list(connection.scalars(text("SELECT hit_count FROM app_private.auth_rate_limits WHERE bucket_key = ANY(:keys)"), {"keys": keys}))
-    assert counts == [8, 8]
+        counts = dict(connection.execute(
+            text("SELECT bucket_key, hit_count FROM app_private.auth_rate_limits WHERE bucket_key = ANY(:keys)"),
+            {"keys": [ip_key, email_key]},
+        ).all())
+    assert counts[ip_key] == 8
+    # Email is touched only for requests admitted by the IP bucket (limit 3).
+    assert counts[email_key] == min(rate_limited_settings["settings"].auth_login_ip_limit, 8)
+
+
+def test_ip_rejections_with_unique_emails_do_not_create_email_rows(
+    client, post_headers, rate_limited_settings, monkeypatch, test_ns, db_engine
+):
+    _speed_up_password_checks(monkeypatch)
+    ip = _ip(test_ns)
+    emails = [ns_email(test_ns, f"ip-rejected-{index}") for index in range(7)]
+    for email in emails[:3]:
+        assert _login(client, post_headers, email, ip).status_code == 401
+    for email in emails[3:]:
+        _assert_limited(_login(client, post_headers, email, ip))
+
+    email_keys = [hashlib.sha256(f"login:email:{email}".encode()).hexdigest() for email in emails]
+    ip_key = hashlib.sha256(f"login:ip:{_ip_bucket_value(ip)}".encode()).hexdigest()
+    with db_engine.connect() as connection:
+        persisted = set(connection.scalars(
+            text("SELECT bucket_key FROM app_private.auth_rate_limits WHERE bucket_key = ANY(:keys)"),
+            {"keys": [ip_key, *email_keys]},
+        ))
+    assert ip_key in persisted
+    assert persisted.isdisjoint(email_keys[3:])
+
+
+def test_concurrent_unique_emails_create_at_most_ip_limit_email_rows(
+    post_headers, rate_limited_settings, monkeypatch, test_ns, db_engine
+):
+    from app.main import app
+    _speed_up_password_checks(monkeypatch)
+    ip = _ip(test_ns)
+    emails = [ns_email(test_ns, f"concurrent-unique-{index}") for index in range(8)]
+
+    def one_request(email):
+        with TestClient(app, raise_server_exceptions=False) as concurrent_client:
+            return _login(concurrent_client, post_headers, email, ip)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        responses = list(pool.map(one_request, emails))
+    assert sorted(response.status_code for response in responses) == [401, 401, 401, 429, 429, 429, 429, 429]
+
+    ip_key = hashlib.sha256(f"login:ip:{_ip_bucket_value(ip)}".encode()).hexdigest()
+    email_keys = [hashlib.sha256(f"login:email:{email}".encode()).hexdigest() for email in emails]
+    with db_engine.connect() as connection:
+        rows = dict(connection.execute(
+            text("SELECT bucket_key, hit_count FROM app_private.auth_rate_limits WHERE bucket_key = ANY(:keys)"),
+            {"keys": [ip_key, *email_keys]},
+        ).all())
+    assert rows[ip_key] == 8
+    persisted_email_rows = {key: count for key, count in rows.items() if key in email_keys}
+    assert len(persisted_email_rows) <= rate_limited_settings["settings"].auth_login_ip_limit
+    assert all(count == 1 for count in persisted_email_rows.values())
 
 
 def test_login_rate_limit_rolls_back_both_buckets_if_email_bucket_fails(

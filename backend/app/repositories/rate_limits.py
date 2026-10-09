@@ -16,10 +16,14 @@ def consume_buckets(
     now: datetime,
     window_seconds: int,
 ) -> dict[str, tuple[int, datetime]]:
-    """Atomically consume sorted fixed-window buckets in one statement."""
+    """Atomically consume the supplied fixed-window buckets in one statement.
+
+    Callers that consume multiple logical axes must call this function in their
+    global lock order (IP, then email) within the same transaction.
+    """
     if not bucket_keys:
         return {}
-    ordered_keys = sorted(bucket_keys)
+    ordered_keys = list(bucket_keys)
     table = AuthRateLimit.__table__
     expired = table.c.window_started_at <= now - timedelta(seconds=window_seconds)
     statement = insert(table).values([

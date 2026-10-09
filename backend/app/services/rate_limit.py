@@ -38,33 +38,42 @@ def enforce_auth_rate_limit(
         return
     if action == "login":
         window = settings.auth_login_window_seconds
-        buckets = [
-            ("ip", client_ip, settings.auth_login_ip_limit),
-            ("email", (email or "").strip().lower(), settings.auth_login_email_limit),
-        ]
+        ip_limit = settings.auth_login_ip_limit
+        email_limit = settings.auth_login_email_limit
     elif action == "signup":
         window = settings.auth_signup_window_seconds
-        buckets = [("ip", client_ip, settings.auth_signup_ip_limit)]
+        ip_limit = settings.auth_signup_ip_limit
+        email_limit = None
     else:
         raise ValueError("unsupported auth rate limit action")
+
     now = utcnow()
     rejected: list[int] = []
     try:
-        keyed_limits = sorted(
-            (_bucket_key(action, axis, value), limit)
-            for axis, value, limit in buckets
-        )
-        consumed = consume_buckets(
+        ip_key = _bucket_key(action, "ip", client_ip)
+        ip_consumed = consume_buckets(
             db,
-            bucket_keys=[bucket_key for bucket_key, _ in keyed_limits],
+            bucket_keys=[ip_key],
             now=now,
             window_seconds=window,
         )
+        ip_count, ip_window_started_at = ip_consumed[ip_key]
+        if ip_count > ip_limit:
+            rejected.append(max(1, math.ceil((ip_window_started_at.timestamp() + window) - now.timestamp())))
+        elif email_limit is not None:
+            normalized_email = (email or "").strip().lower()
+            email_key = _bucket_key(action, "email", normalized_email)
+            email_consumed = consume_buckets(
+                db,
+                bucket_keys=[email_key],
+                now=now,
+                window_seconds=window,
+            )
+            email_count, email_window_started_at = email_consumed[email_key]
+            if email_count > email_limit:
+                rejected.append(max(1, math.ceil((email_window_started_at.timestamp() + window) - now.timestamp())))
         db.commit()
-        for bucket_key, limit in keyed_limits:
-            count, window_started_at = consumed[bucket_key]
-            if count > limit:
-                rejected.append(max(1, math.ceil((window_started_at.timestamp() + window) - now.timestamp())))
+
     except Exception as exc:
         db.rollback()
         log_database_failure("rate_limit", exc, settings)

@@ -125,7 +125,7 @@
 
 | # | 결정 | 근거 |
 | --- | --- | --- |
-| D1 | 레이트리밋 저장소는 **기존 PostgreSQL 테이블**(`app_private.auth_rate_limits`)을 쓰고, 원자적 UPSERT 고정 윈도 카운터로 구현한다 | Vercel Fluid Compute는 인스턴스가 여러 개이고 수명도 보장되지 않는다. 인메모리 카운터는 인스턴스마다 따로 세므로 제한값이 인스턴스 수만큼 늘어나 무력해진다. Redis 같은 새 인프라는 Marketplace 프로비저닝과 비밀 관리가 추가로 필요하다. 로그인·가입은 어차피 DB를 쓰므로 왕복 1회만 늘어난다. 로그인 경로 트래픽은 작아서 행 경합도 문제가 되지 않는다 |
+| D1 | 레이트리밋 저장소는 **기존 PostgreSQL 테이블**(`app_private.auth_rate_limits`)을 쓰고, 원자적 UPSERT 고정 윈도 카운터로 구현한다 | Vercel Fluid Compute는 인스턴스가 여러 개이고 수명도 보장되지 않는다. 인메모리 카운터는 인스턴스마다 따로 세므로 제한값이 인스턴스 수만큼 늘어나 무력해진다. Redis 같은 새 인프라는 Marketplace 프로비저닝과 비밀 관리가 추가로 필요하다. 로그인·가입은 어차피 DB를 쓰므로 IP 확인 후 이메일 소비가 필요한 로그인은 최대 두 번의 UPSERT를 추가한다. 로그인 경로 트래픽은 작아서 행 경합도 문제가 되지 않는다 |
 | D2 | 카운트는 **시도 기준**(성공·실패 모두)으로, **Argon2를 실행하기 전**에 소비한다 | 실패만 세려면 해시 검증이 끝난 뒤에야 셀 수 있다. 그러면 Argon2 비용을 막을 수 없다(S-01 회귀 기준: “제한된 요청에서 Argon2 미실행”) |
 | D3 | 축은 **IP와 정규화 이메일 두 가지**다(로그인). 가입은 IP 축만 쓴다 | IP 축은 스터핑을 막고, 이메일 축은 IP를 돌려 가며 한 계정을 노리는 공격을 막는다. 가입 중복 이메일은 Argon2 전에 409로 끝나므로 이메일 축이 필요 없다 |
 | D4 | 저장 키는 `sha256("{action}:{axis}:{value}")` 16진 문자열이다. IP·이메일 원문은 저장하지 않는다 | 개인정보를 최소화한다. 키가 고정 길이가 된다 |
@@ -166,14 +166,14 @@ CREATE TABLE IF NOT EXISTS app_private.auth_rate_limits (
 CREATE INDEX IF NOT EXISTS ix_auth_rate_limits_updated_at ON app_private.auth_rate_limits (updated_at);
 ```
 
-- 행 수는 “서로 다른 IP·이메일 수”만큼만 늘어난다. 윈도가 지난 행은 다음 히트 때 그 자리에서 재사용된다. 오래된 행 정리는 P-17 후속 잡에 맡긴다(`updated_at` 인덱스는 그 잡에서 쓴다).
+- 행 수는 서로 다른 IP 수와 **IP 한도 안에서 허용된 로그인 시도의 정규화 이메일 수**만큼 늘어난다. IP 한도를 넘긴 요청은 이메일 버킷을 소비하지 않아 새 이메일 행을 만들지 않는다. 윈도가 지난 행은 다음 히트 때 그 자리에서 재사용된다. 오래된 행 정리는 P-17 후속 잡에 맡긴다(`updated_at` 인덱스는 그 잡에서 쓴다).
 - SQLAlchemy 모델 `AuthRateLimit`(`app/db/models.py`)도 같은 컬럼·제약·인덱스로 선언한다(P-16 드리프트 방지).
 
 #### 5.1.3 원자적 소비 SQL (`app/repositories/rate_limits.py` 신규)
 
 ```sql
 INSERT INTO app_private.auth_rate_limits AS r (bucket_key, window_started_at, hit_count, updated_at)
-VALUES (:sorted_key_1, :now, 1, :now), (:sorted_key_2, :now, 1, :now)
+VALUES (:bucket_key, :now, 1, :now)
 ON CONFLICT (bucket_key) DO UPDATE SET
   hit_count = CASE WHEN r.window_started_at <= :now - make_interval(secs => :window) THEN 1 ELSE r.hit_count + 1 END,
   window_started_at = CASE WHEN r.window_started_at <= :now - make_interval(secs => :window) THEN :now ELSE r.window_started_at END,
@@ -181,10 +181,10 @@ ON CONFLICT (bucket_key) DO UPDATE SET
 RETURNING bucket_key, hit_count, window_started_at
 ```
 
-로그인은 정렬한 IP·이메일 키 두 행을 한 `INSERT` 문으로 보낸다. 가입은 IP 키 한 행을 같은 방식으로 보낸다.
+로그인은 먼저 IP 키 한 행을 UPSERT하고 결과를 확인한다. IP 한도 이내일 때만 이메일 키 한 행을 같은 트랜잭션에서 UPSERT한다. 가입은 IP 키 한 행만 소비한다.
 
 - `:now`는 DB `now()`가 아니라 Python `app.core.security.utcnow()`로 넘긴다. 테스트에서 `monkeypatch`로 시간을 옮길 수 있게 하기 위해서다.
-- 한 요청의 버킷(로그인은 2개)은 키를 정렬해 **하나의 multi-row UPSERT 문장과 하나의 트랜잭션**에서 소비하고, 서비스가 `commit()`을 한 번 호출한다. 정렬하는 이유는 교착을 막기 위해서다. 어느 행이든 실패하면 전체 트랜잭션을 rollback하고 503을 반환하므로 부분 카운트가 남지 않는다. 커밋한 뒤에야 사용자 조회와 Argon2로 넘어간다. 그래서 해시 계산 중에는 레이트리밋 트랜잭션이 열려 있지 않다.
+- 한 요청의 버킷은 **IP → 이메일 잠금 순서**로 하나의 트랜잭션에서 소비하고 서비스가 `commit()`을 한 번 호출한다. IP가 이미 한도를 넘으면 IP 카운터만 커밋하고 429를 반환하며 이메일 버킷은 읽거나 쓰지 않는다. 따라서 8개 동시 요청의 IP 카운트는 8, 이메일 카운트는 `min(IP 한도, 8)`이고, 거부된 새 이메일은 행을 만들지 않는다. IP와 이메일 행 모두 잠그는 경로는 항상 IP를 먼저 잡아 교착 계층 역전을 막는다. 어느 저장 단계든 실패하면 전체 트랜잭션을 rollback하고 503을 반환한다. 커밋한 뒤에야 사용자 조회와 Argon2로 넘어간다. 그래서 해시 계산 중에는 레이트리밋 트랜잭션이 열려 있지 않다.
 - 한도를 넘긴 요청도 카운트는 올라간다. 고정 윈도라서 윈도 시작 시각은 늘어나지 않는다.
 
 #### 5.1.4 서비스 (`app/services/rate_limit.py` 신규)
