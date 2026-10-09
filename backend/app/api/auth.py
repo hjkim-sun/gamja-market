@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     expire_session_cookie,
     get_current_user,
+    client_ip,
     get_db,
     request_session_token,
     require_auth_post_request,
@@ -16,6 +17,7 @@ from app.core.config import Settings, get_settings
 from app.db.models import User
 from app.schemas.auth import AuthResponse, AuthUser, LoginRequest, LogoutRequest, SignupRequest
 from app.services.auth import EmailAlreadyExists, InvalidCredentials, ServiceUnavailable, login, logout, signup
+from app.services.rate_limit import RateLimited, enforce_auth_rate_limit
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -36,6 +38,7 @@ def signup_endpoint(
     if payload.password != payload.password_confirmation:
         raise ApiError(422, "PASSWORD_MISMATCH", fields={"password_confirmation": "비밀번호가 일치하지 않습니다."})
     try:
+        enforce_auth_rate_limit(db, action="signup", client_ip=client_ip(request, settings), email=None, settings=settings)
         user, token = signup(
             db,
             email=payload.email,
@@ -45,6 +48,8 @@ def signup_endpoint(
         )
     except EmailAlreadyExists:
         raise ApiError(409, "EMAIL_ALREADY_EXISTS", fields={"email": "이미 가입된 이메일입니다."}) from None
+    except RateLimited as exc:
+        raise ApiError(429, "RATE_LIMITED", headers={"Retry-After": str(exc.retry_after)}) from None
     except ServiceUnavailable:
         raise ApiError(503, "SERVICE_UNAVAILABLE") from None
     set_session_cookie(response, token, settings)
@@ -60,6 +65,7 @@ def login_endpoint(
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
     try:
+        enforce_auth_rate_limit(db, action="login", client_ip=client_ip(request, settings), email=payload.email, settings=settings)
         user, token = login(
             db,
             email=payload.email,
@@ -69,6 +75,8 @@ def login_endpoint(
         )
     except InvalidCredentials:
         raise ApiError(401, "INVALID_CREDENTIALS") from None
+    except RateLimited as exc:
+        raise ApiError(429, "RATE_LIMITED", headers={"Retry-After": str(exc.retry_after)}) from None
     except ServiceUnavailable:
         raise ApiError(503, "SERVICE_UNAVAILABLE") from None
     set_session_cookie(response, token, settings)

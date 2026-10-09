@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import threading
 from datetime import UTC, datetime, timedelta
 
 from pwdlib import PasswordHash
@@ -13,18 +14,34 @@ from app.core.config import Settings
 # Parameters are explicit so deployments do not silently inherit a weaker default.
 password_hasher = PasswordHash((Argon2Hasher(memory_cost=65536, time_cost=3, parallelism=4),))
 _DUMMY_PASSWORD_HASH = password_hasher.hash("gamja-market-dummy-password")
+PASSWORD_HASH_CONCURRENCY = 2
+PASSWORD_HASH_WAIT_SECONDS = 10.0
+_hash_slots = threading.BoundedSemaphore(PASSWORD_HASH_CONCURRENCY)
+
+
+class PasswordHashBusy(Exception):
+    pass
+
+
+def _run_password_hash(operation, *args):
+    if not _hash_slots.acquire(timeout=PASSWORD_HASH_WAIT_SECONDS):
+        raise PasswordHashBusy
+    try:
+        return operation(*args)
+    finally:
+        _hash_slots.release()
 
 
 def hash_password(password: str) -> str:
-    return password_hasher.hash(password)
+    return _run_password_hash(password_hasher.hash, password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return password_hasher.verify(password, password_hash)
+    return _run_password_hash(password_hasher.verify, password, password_hash)
 
 
 def verify_dummy_password(password: str) -> None:
-    password_hasher.verify(password, _DUMMY_PASSWORD_HASH)
+    _run_password_hash(password_hasher.verify, password, _DUMMY_PASSWORD_HASH)
 
 
 def new_session_token() -> str:

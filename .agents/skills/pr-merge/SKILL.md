@@ -14,15 +14,19 @@ master 브랜치 pr 리뷰를 위해 `orchestration` 스킬을 활용해 아래 
  - perf_reviewer: 성능 Risk 위주 검토
  
 2. 작업 순서
-orchestrator > [secu_reviwer, perf_reviewer] > 리뷰 의견 종합/결정(orchestrator) > merge(orchestrator)
+orchestrator > [secu_reviwer, perf_reviewer](t1) > 검토(orchestrator)(t2) > merge(orchestrator)(t3)
 
+ - t2 단계에서 오케스트레이터는 merge 승인 여부를 결정하며 부결로 판단한 경우 `sdd-tdd-development` 스킬을 참조하여 backend worker, frontend worker 등 필요한 워커를 추가로 띄우고 보완 작업을 수행한다. 
+   보완 작업이 완료되면 t1 단계를 재수행한다. 
+    
 3. 워커 에이전트 유형 및 사고 수준 정의
  - secu_reviewer --agent codex --model gpt-6-sol --effort high
  - perf_reviewer: --agent claude --model opus --effort high
 
+
 ## 리뷰 의견 종합/결정 단계
  - orchestrator는 리뷰 의견을 종합하여 부결/승인을 결정한다.
- - 만약 부결로 판단한 경우 사유를 pr에 변경 요청 리뷰를 남긴다. 
+ - 만약 부결로 판단한 경우 사유를 pr에 커멘트를 남긴다. 
  - 승인으로 판단한 경우 merge 단계를 수행한다. 
 
 ## merge 단계

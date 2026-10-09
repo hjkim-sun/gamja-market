@@ -169,7 +169,7 @@ def list_requests(
             page=params.page,
             page_size=params.page_size,
         )
-        request_ids = [request.id for request, _, _ in rows]
+        request_ids = [request.id for request, _ in rows]
         thumbnails: dict[UUID, str] = {}
         if request_ids:
             bucket_condition = PurchaseRequestPhoto.storage_bucket.is_(namespace[1]) if namespace[1] is None else PurchaseRequestPhoto.storage_bucket == namespace[1]
@@ -187,7 +187,7 @@ def list_requests(
             }
         return [
             _summary_data(request, viewer_id, applicant_count, thumbnails.get(request.id))
-            for request, _, applicant_count in rows
+            for request, applicant_count in rows
         ], total
     except SQLAlchemyError as exc:
         db.rollback()

@@ -70,6 +70,7 @@ class PurchaseRequest(Base):
         ),
         CheckConstraint("updated_at >= created_at", name="ck_purchase_requests_updated_after_created"),
         Index("ix_purchase_requests_created_at_id", text("created_at DESC"), text("id DESC")),
+        Index("ix_purchase_requests_price_created_id", text("price_max DESC"), text("created_at DESC"), text("id DESC")),
         Index("ix_purchase_requests_buyer_id", "buyer_id"),
         Index("ix_purchase_requests_category", "category"),
         Index("ix_purchase_requests_status", "status"),
@@ -96,7 +97,13 @@ class PurchaseRequest(Base):
 
 class PurchaseRequestPhoto(Base):
     __tablename__ = "purchase_request_photos"
-    __table_args__ = ({"schema": "app_private"},)
+    __table_args__ = (
+        Index("ix_request_photos_request_id", "request_id", postgresql_where=text("status = 'attached'")),
+        Index("ix_request_photos_uploader_status", "uploader_id", "status", "created_at"),
+        Index("ix_request_photos_cleanup", "storage_backend", "storage_bucket", "status", "created_at", postgresql_where=text("object_deleted_at IS NULL")),
+        Index("uq_request_photos_request_sort", "request_id", "sort_order", unique=True, postgresql_where=text("status = 'attached'")),
+        {"schema": "app_private"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     uploader_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("app_private.users.id", ondelete="CASCADE"), nullable=False)
@@ -115,6 +122,19 @@ class PurchaseRequestPhoto(Base):
     discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     object_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+
+class AuthRateLimit(Base):
+    __tablename__ = "auth_rate_limits"
+    __table_args__ = (
+        CheckConstraint("hit_count >= 1", name="ck_auth_rate_limits_hit_count"),
+        Index("ix_auth_rate_limits_updated_at", "updated_at"),
+        {"schema": "app_private"},
+    )
+
+    bucket_key: Mapped[str] = mapped_column(CHAR(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
 class SellerApplication(Base):
     __tablename__ = "seller_applications"
@@ -135,6 +155,7 @@ class SellerApplication(Base):
         CheckConstraint("(status = 'pending') = (decided_at IS NULL)", name="ck_seller_applications_decided_at"),
         Index("ix_seller_applications_request_created", "request_id", "created_at", "id"),
         Index("ix_seller_applications_seller_id", "seller_id"),
+        Index("ix_seller_applications_buyer_id", "buyer_id"),
         Index(
             "uq_seller_applications_one_accepted",
             "request_id",

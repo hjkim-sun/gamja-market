@@ -3,14 +3,13 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 
 logger = logging.getLogger(__name__)
 
 
-def log_database_failure(operation: str, exc: SQLAlchemyError, settings: Settings) -> None:
+def log_database_failure(operation: str, exc: Exception, settings: Settings) -> None:
     """Log a classified database failure without logging a DSN or credentials."""
     original = getattr(exc, "orig", None)
     host = make_url(settings.database_url).host or ""

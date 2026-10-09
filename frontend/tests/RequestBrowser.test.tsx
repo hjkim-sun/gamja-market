@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RequestBrowser } from '@/features/requests/components/RequestBrowser';
+import { MAX_LIST_PAGE } from '@/lib/api/requests';
 
 const replace = vi.fn();
 const push = vi.fn();
@@ -114,5 +115,28 @@ describe('RequestBrowser 서버 제공 결과', () => {
 
     expect(push).toHaveBeenCalled();
     expect(push.mock.calls[0]?.[0]).toBe('/?category=%EA%B0%80%EC%A0%84&page=2');
+  });
+
+  it('총 페이지가 상한을 넘어도 MAX_LIST_PAGE까지만 표시하고 마지막 페이지에서 다음을 비활성화한다', async () => {
+    search = `page=${MAX_LIST_PAGE}`;
+    const user = userEvent.setup();
+    renderBrowser({ total: 12 * (MAX_LIST_PAGE + 50), page: MAX_LIST_PAGE, pageSize: 12 });
+
+    expect(screen.getByText(`${MAX_LIST_PAGE} / ${MAX_LIST_PAGE}`)).toBeInTheDocument();
+    const next = screen.getByRole('button', { name: /다음/ });
+    expect(next).toBeDisabled();
+    await user.click(next);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('상한 직전 페이지에서는 MAX_LIST_PAGE로 이동하고 그 너머 URL은 만들지 않는다', async () => {
+    search = `page=${MAX_LIST_PAGE - 1}`;
+    const user = userEvent.setup();
+    renderBrowser({ total: 12 * (MAX_LIST_PAGE + 50), page: MAX_LIST_PAGE - 1, pageSize: 12 });
+
+    await user.click(screen.getByRole('button', { name: /다음/ }));
+
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith(`/?page=${MAX_LIST_PAGE}`);
   });
 });

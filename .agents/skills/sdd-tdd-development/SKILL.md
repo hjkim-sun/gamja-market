@@ -19,19 +19,25 @@ sdd(스펙 주도 개발) 과 tdd (테스트 주도 개발)을 위해 orca orche
    - tester worker (RED 케이스 생성)
    - backend worker
    - front worker
+   - secu_reviewer: 보안 Risk 위주 검토
+   - perf_reviewer: 성능 Risk 위주 검토
    - ui tester
+
 2. 작업 순서
-orchestrator &gt; designer &gt; 사람 검토 &gt; tester &gt; \[backend, front\] &gt; ui tester
+orchestrator > designer(t1) > 사람 검토(t2) > tester(t3) > [backend, front](t4) > [secu_reviewer, perf_reviewer](t5) > 검토(orchestrator)(t6) > ui tester (t7)
 
-메인 오케스트레이터는 위 5개의 워커를 생성하며 backend worker와 front worker, ui tester worker는 상호 통신할 수 있도록 상호 dispatch\_id를 알려준다.
+ - 메인 오케스트레이터는 위 7개의 워커를 생성하며 backend worker와 front worker, secu_reviewer, perf_reviewer, ui tester worker는 상호 통신할 수 있도록 상호 dispatch_id를 알려준다.
+ - t6 단계에서 메인 오케스트레이터는 보안, 성능 검토 결과를 종합하여 ui test를 진행할지, t4 단계로 되돌아 갈지를 결정한다. 
 
-# 워커 에이전트 유형 및 사고 수준 정의
+## 워커 에이전트 유형 및 사고 수준 정의
 
 1. designer worker: --agent claude --model opus --effort high
 2. tester worker: --agent codex --model gpt-6-luna --effort high
-3. backend worker: --agent codex --model gpt-6-luna --effort high
+3. backend worker: --agent codex --model gpt-6-luna--effort high
 4. front worker: --agent claude --model sonnet --effort high
-5. ui worker: --agent codex --model sonnet --effort high
+5. secu_reviewer: --agent codex --model gpt-6-sol --effort high
+6. perf_reviewer: --agent claude --model opus --effort high
+7. ui worker: --agent codex --model sonnet --effort high
 
 # Must to do(Orchestrator)
 

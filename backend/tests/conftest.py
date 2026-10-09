@@ -20,6 +20,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 os.environ.setdefault("AUTH_ALLOWED_ORIGINS", '["http://localhost:3000"]')
+os.environ.setdefault("AUTH_RATE_LIMIT_ENABLED", "false")
 os.environ.setdefault("SESSION_COOKIE_SECURE", "false")
 
 from app.core.config import Settings, get_settings
@@ -64,6 +65,8 @@ def _alembic_config() -> Config:
 
 def _explicit_migration_target(config: Config) -> str:
     known = {revision.revision for revision in ScriptDirectory.from_config(config).walk_revisions()}
+    if "0006_security_perf_hardening" in known:
+        return "0006_security_perf_hardening"
     if "0005_chat_matching" in known:
         return "0005_chat_matching"
     if "0004_request_photos" in known:
@@ -231,3 +234,26 @@ def photo_storage():
         yield storage
     finally:
         app.dependency_overrides.pop(get_photo_storage, None)
+
+
+@pytest.fixture
+def rate_limited_settings(test_ns: str):
+    """Enable small per-test auth limits and trust only test-supplied proxy IPs."""
+    from app.core.config import get_settings
+    from app.main import app
+
+    original = get_settings()
+    settings = original.model_copy(update={
+        "auth_rate_limit_enabled": True,
+        "trust_proxy_ip_headers": True,
+        "auth_login_ip_limit": 3,
+        "auth_login_email_limit": 2,
+        "auth_login_window_seconds": 600,
+        "auth_signup_ip_limit": 2,
+        "auth_signup_window_seconds": 3600,
+    })
+    app.dependency_overrides[get_settings] = lambda: settings
+    try:
+        yield {"settings": settings, "namespace": test_ns}
+    finally:
+        app.dependency_overrides.pop(get_settings, None)

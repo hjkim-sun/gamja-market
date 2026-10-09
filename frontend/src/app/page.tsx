@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 
 import { requestCategories } from '@/features/requests/categories';
 import { RequestBrowser } from '@/features/requests/components/RequestBrowser';
-import { listRequests } from '@/lib/api/requests';
+import { listRequests, resolveListPage } from '@/lib/api/requests';
 import { resolveServerApiBase } from '@/lib/api/serverBase';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,6 @@ function firstValue(value: string | string[] | undefined): string | undefined {
 async function RequestBrowserSection({ searchParams }: HomePageProps) {
   const params = await searchParams;
   const cookie = (await headers()).get('cookie') ?? undefined;
-  const page = Number(firstValue(params.page) ?? '1');
 
   const { items, total, page: currentPage, pageSize } = await listRequests(
     {
@@ -31,7 +30,7 @@ async function RequestBrowserSection({ searchParams }: HomePageProps) {
       category: firstValue(params.category),
       status: firstValue(params.status),
       sort: firstValue(params.sort) as 'latest' | 'price' | 'applicants' | undefined,
-      page: Number.isFinite(page) && page > 0 ? page : 1,
+      page: resolveListPage(firstValue(params.page)),
     },
     { baseUrl: resolveServerApiBase(), cookie },
   );

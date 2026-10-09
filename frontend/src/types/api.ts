@@ -21,7 +21,8 @@ export type ApiErrorCode =
   | 'NOT_REQUEST_OWNER'
   | 'REQUEST_ALREADY_MATCHED'
   | 'REQUEST_CLOSED'
-  | 'CHAT_ROOM_CLOSED';
+  | 'CHAT_ROOM_CLOSED'
+  | 'RATE_LIMITED';
 
 export type ApiErrorFields = Partial<Record<string, string>>;
 
