@@ -23,6 +23,7 @@ from app.services.errors import ServiceUnavailable
 from app.services.requests import InvalidPhotoIds, RequestNotFound, create_request, get_request, list_requests
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
+MAX_LIST_PAGE = 500
 
 
 def _no_store(response: Response) -> None:
@@ -34,7 +35,7 @@ def parse_list_params(
     category: RequestCategory | None = None,
     status: str | None = None,
     sort: str | None = None,
-    page: Annotated[int, Query(ge=1)] = 1,
+    page: Annotated[int, Query(ge=1, le=MAX_LIST_PAGE)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=50)] = 12,
 ) -> RequestListParams:
     """Apply query normalization while preserving FastAPI's 422 error contract."""

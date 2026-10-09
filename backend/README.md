@@ -1,6 +1,6 @@
 # Gamja Market backend
 
-Copy `.env.example` to `.env` and provide PostgreSQL credentials. The application starts without running migrations. Migration work is separate from service startup; check the target of `MIGRATION_DATABASE_URL` before running it, since it may point to Supabase.
+Copy the repository root `.env.example` to `.env` and set `POSTGRES_PASSWORD` to the current password used by the existing local volume. Keep the compose project name and `postgres_data` volume unchanged; the published port is loopback-only. The backend application starts without running migrations. Migration work is separate from service startup; verify `MIGRATION_DATABASE_URL` points to the local loopback database before applying migrations.
 
 The example enables Git-ignored local photo storage at `backend/.local-storage`, so JPEG, PNG, and WebP uploads work in development. For production, set `PHOTO_STORAGE_DRIVER=supabase` together with the three server-only `SUPABASE_*` variables; never commit those credentials.
 
@@ -15,7 +15,7 @@ Run the backend test suite with the same environment configuration used by the a
 uv run pytest
 ```
 
-For seller-application work, use the fixture-managed explicit `0003_seller_applications` target. Do not run `upgrade head`, `stamp`, or downgrade against the shared database, because `.env` may contain a separate remote `MIGRATION_DATABASE_URL`.
+For local development, run `uv run alembic upgrade head` only after verifying the resolved migration URL is the existing local loopback database. Never run migrations against a remote `MIGRATION_DATABASE_URL` as part of local verification. Tests use fixture-managed explicit revision targets and preserve existing test data.
 
 The browser should reach this service through the frontend's same-origin `/api/auth/*` rewrite.  A direct smoke test must send the accepted origin and request header:
 

@@ -108,3 +108,22 @@ describe('auth API 클라이언트', () => {
     expect((caught as ApiError).code).toBe('SERVICE_UNAVAILABLE');
   });
 });
+
+describe('RATE_LIMITED API 오류', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('429 계약 본문을 RATE_LIMITED와 서버 메시지로 보존한다', async () => {
+    stubFetch(async () => jsonResponse(429, {
+      error: { code: 'RATE_LIMITED', message: '요청이 너무 많아요. 잠시 후 다시 시도해 주세요.', fields: {} },
+    }));
+    const caught = await login({ email: 'buyer@example.com', password: 'potato-pass-123' }).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({ code: 'RATE_LIMITED', status: 429, message: '요청이 너무 많아요. 잠시 후 다시 시도해 주세요.' });
+  });
+
+  it('깨진 429 본문도 RATE_LIMITED로 분류한다', async () => {
+    stubFetch(async () => new Response('{', { status: 429 }));
+    const caught = await login({ email: 'buyer@example.com', password: 'potato-pass-123' }).catch((e: unknown) => e);
+    expect(caught).toMatchObject({ code: 'RATE_LIMITED', status: 429 });
+  });
+});

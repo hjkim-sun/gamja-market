@@ -1,3 +1,4 @@
+name: gamja-market
 services:
   postgres:
     image: postgres:16-alpine
@@ -6,9 +7,9 @@ services:
     environment:
       POSTGRES_DB: gamja_market
       POSTGRES_USER: gamja
-      POSTGRES_PASSWORD: "!test123"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?루트 .env에 POSTGRES_PASSWORD를 설정하세요}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

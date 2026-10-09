@@ -13,6 +13,7 @@ ERROR_MESSAGES = {
     "INVALID_ORIGIN": "허용되지 않은 요청 출처입니다.",
     "UNSUPPORTED_MEDIA_TYPE": "지원하지 않는 콘텐츠 형식입니다.",
     "SERVICE_UNAVAILABLE": "서비스를 일시적으로 사용할 수 없습니다.",
+    "RATE_LIMITED": "요청이 너무 많아요. 잠시 후 다시 시도해 주세요.",
     "NOT_FOUND": "요청을 찾을 수 없습니다.",
     "SELF_APPLICATION_FORBIDDEN": "본인 구매요청에는 지원할 수 없습니다.",
     "REQUEST_NOT_OPEN": "모집 중인 구매요청에만 지원할 수 있습니다.",
@@ -29,17 +30,18 @@ ERROR_MESSAGES = {
 }
 
 
-def error_response(status_code: int, code: str, *, fields: dict[str, str] | None = None) -> JSONResponse:
+def error_response(status_code: int, code: str, *, fields: dict[str, str] | None = None, headers: dict[str, str] | None = None) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
         content={"error": {"code": code, "message": ERROR_MESSAGES[code], "fields": fields or {}}},
+        headers=headers,
     )
 
 
 class ApiError(HTTPException):
-    def __init__(self, status_code: int, code: str, *, fields: dict[str, str] | None = None) -> None:
-        super().__init__(status_code=status_code, detail={"code": code, "fields": fields or {}})
+    def __init__(self, status_code: int, code: str, *, fields: dict[str, str] | None = None, headers: dict[str, str] | None = None) -> None:
+        super().__init__(status_code=status_code, detail={"code": code, "fields": fields or {}}, headers=headers)
 
 
 def error_from_exception(exc: ApiError) -> JSONResponse:
-    return error_response(exc.status_code, exc.detail["code"], fields=exc.detail["fields"])
+    return error_response(exc.status_code, exc.detail["code"], fields=exc.detail["fields"], headers=exc.headers)

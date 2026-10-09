@@ -53,6 +53,16 @@ function parsePhotos(value: unknown): RequestPhoto[] | null {
   return photos;
 }
 
+/** 백엔드 `page` 상한(`le=500`)과 같은 값이다. 넘으면 422가 되므로 프론트에서 먼저 보정한다. */
+export const MAX_LIST_PAGE = 500;
+
+/** URL의 `?page=` 원문을 1..MAX_LIST_PAGE 범위의 정수로 보정한다. */
+export function resolveListPage(raw: string | undefined): number {
+  const value = Math.floor(Number(raw));
+  if (!Number.isFinite(value) || value < 1) return 1;
+  return Math.min(value, MAX_LIST_PAGE);
+}
+
 interface RequestOpts {
   signal?: AbortSignal;
   baseUrl?: string;

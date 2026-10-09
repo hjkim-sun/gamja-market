@@ -31,6 +31,9 @@ export interface AuthContextValue {
 
 export const RESTORE_ERROR_MESSAGE = '로그인 상태를 확인할 수 없습니다.';
 
+/** focus·visibilitychange 재검증 사이의 최소 간격(P-14). 최초 복원과 refresh()는 대상이 아니다. */
+const REVALIDATE_THROTTLE_MS = 2000;
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -44,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * 최신 세대가 아닌 응답은 상태에 반영하지 않는다.
    */
   const generationRef = useRef(0);
+  const lastRevalidateAtRef = useRef(0);
 
   const nextGeneration = useCallback(() => {
     generationRef.current += 1;
@@ -99,6 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 다른 탭의 로그아웃·세션 만료를 반영한다. 고정 주기 폴링은 만들지 않는다.
     function handleRevalidate() {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      // 탭 전환 한 번에 focus와 visibilitychange가 함께 와도 /me는 한 번만 호출한다.
+      const now = Date.now();
+      if (now - lastRevalidateAtRef.current < REVALIDATE_THROTTLE_MS) return;
+      lastRevalidateAtRef.current = now;
       void restore();
     }
 

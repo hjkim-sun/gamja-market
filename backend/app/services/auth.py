@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.db_logging import log_database_failure
 from app.core.security import (
+    PasswordHashBusy,
     hash_password,
     hash_session_token,
     new_session_token,
@@ -41,7 +42,10 @@ def signup(db: Session, *, email: str, password: str, old_token: str | None, set
             raise EmailAlreadyExists
         # End the read transaction before expensive hashing; the INSERT still handles races.
         db.rollback()
-        password_hash = hash_password(password)
+        try:
+            password_hash = hash_password(password)
+        except PasswordHashBusy:
+            raise ServiceUnavailable from None
         token = new_session_token()
         user = User(email=email, password_hash=password_hash)
         db.add(user)
@@ -72,10 +76,19 @@ def login(db: Session, *, email: str, password: str, old_token: str | None, sett
         raise ServiceUnavailable from None
     if user is None:
         db.rollback()
-        verify_dummy_password(password)
+        try:
+            verify_dummy_password(password)
+        except PasswordHashBusy:
+            raise ServiceUnavailable from None
         raise InvalidCredentials
-    if not verify_password(password, user.password_hash):
-        db.rollback()
+    password_hash = user.password_hash
+    db.expunge(user)
+    db.rollback()
+    try:
+        is_valid = verify_password(password, password_hash)
+    except PasswordHashBusy:
+        raise ServiceUnavailable from None
+    if not is_valid:
         raise InvalidCredentials
     try:
         token = new_session_token()

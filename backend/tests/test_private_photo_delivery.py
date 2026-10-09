@@ -46,7 +46,8 @@ def test_private_bucket_attached_photo_is_served_via_public_api_only(
         assert fetched.status_code == 200
         assert fetched.content == next(iter(storage.objects.values()))[0]
         assert fetched.headers["content-type"].startswith("image/jpeg")
-        assert fetched.headers["cache-control"] == "public, max-age=3600"
+        assert fetched.headers["cache-control"] == "public, max-age=86400, immutable"
+        assert fetched.headers["vercel-cdn-cache-control"] == "max-age=604800"
         assert fetched.headers["x-content-type-options"] == "nosniff"
         assert client.get(photo_url.replace(".jpg", ".png")).status_code == 404
 

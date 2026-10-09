@@ -64,7 +64,7 @@ def list_and_count(
     sort: str | None,
     page: int,
     page_size: int,
-) -> tuple[list[tuple[PurchaseRequest, str, int]], int]:
+) -> tuple[list[tuple[PurchaseRequest, int]], int]:
     conditions = []
     if q is not None:
         escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -76,7 +76,17 @@ def list_and_count(
         conditions.append(PurchaseRequest.status == "open")
 
     applicant_count = _applicant_count_subquery().label("applicant_count")
-    statement = select(PurchaseRequest, User.email, applicant_count).join(User, User.id == PurchaseRequest.buyer_id)
+    statement = select(PurchaseRequest, applicant_count)
+    if sort == "applicants":
+        grouped_applicants = (
+            select(SellerApplication.request_id.label("request_id"), func.count().label("applicant_count"))
+            .group_by(SellerApplication.request_id)
+            .subquery()
+        )
+        applicant_count = func.coalesce(grouped_applicants.c.applicant_count, 0).label("applicant_count")
+        statement = select(PurchaseRequest, applicant_count).outerjoin(
+            grouped_applicants, grouped_applicants.c.request_id == PurchaseRequest.id
+        )
     if conditions:
         statement = statement.where(*conditions)
 

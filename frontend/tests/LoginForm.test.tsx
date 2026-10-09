@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginForm } from '@/features/auth/components/LoginForm';
 
-const replace = vi.fn();
+const { replace, search } = vi.hoisted(() => ({ replace: vi.fn(), search: { next: null as string | null } }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace, push: vi.fn() }),
+  useSearchParams: () => ({ get: (key: string) => key === 'next' ? search.next : null }),
 }));
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -115,4 +116,35 @@ describe('LoginForm', () => {
     expect(screen.getByLabelText('이메일')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByLabelText('비밀번호')).toHaveAttribute('aria-invalid', 'true');
   });
+});
+
+
+it('역슬래시 next로 로그인해도 루트로 이동한다', async () => {
+  replace.mockClear();
+  search.next = '/\\evil.example';
+  setupFetch(() => jsonResponse(200, { user: { id: 'user-1', email: 'buyer@example.com' } }));
+  const user = userEvent.setup();
+  await renderForm();
+  await user.type(screen.getByLabelText('이메일'), 'buyer@example.com');
+  await user.type(screen.getByLabelText('비밀번호'), 'potato-pass-123');
+  await user.click(screen.getByRole('button', { name: '로그인' }));
+  await waitFor(() => expect(replace).toHaveBeenCalledWith('/'));
+  search.next = null;
+});
+
+it('429는 서버 안내를 표시하고 비밀번호를 지우며 이동하지 않는다', async () => {
+  replace.mockClear();
+  search.next = null;
+  setupFetch(() => jsonResponse(429, {
+    error: { code: 'RATE_LIMITED', message: '요청이 너무 많아요. 잠시 후 다시 시도해 주세요.', fields: {} },
+  }));
+  const user = userEvent.setup();
+  await renderForm();
+  await user.type(screen.getByLabelText('이메일'), 'buyer@example.com');
+  await user.type(screen.getByLabelText('비밀번호'), 'potato-pass-123');
+  await user.click(screen.getByRole('button', { name: '로그인' }));
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('요청이 너무 많아요. 잠시 후 다시 시도해 주세요.'));
+  expect(screen.getByLabelText('이메일')).toHaveValue('buyer@example.com');
+  expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+  expect(replace).not.toHaveBeenCalled();
 });
