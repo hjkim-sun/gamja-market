@@ -185,7 +185,7 @@ RETURNING bucket_key, hit_count, window_started_at
 
 - `:now`는 DB `now()`가 아니라 Python `app.core.security.utcnow()`로 넘긴다. 테스트에서 `monkeypatch`로 시간을 옮길 수 있게 하기 위해서다.
 - 한 요청의 버킷은 **IP → 이메일 잠금 순서**로 하나의 트랜잭션에서 소비하고 서비스가 `commit()`을 한 번 호출한다. IP가 이미 한도를 넘으면 IP 카운터만 커밋하고 429를 반환하며 이메일 버킷은 읽거나 쓰지 않는다. 따라서 8개 동시 요청의 IP 카운트는 8, 이메일 카운트는 `min(IP 한도, 8)`이고, 거부된 새 이메일은 행을 만들지 않는다. IP와 이메일 행 모두 잠그는 경로는 항상 IP를 먼저 잡아 교착 계층 역전을 막는다. 어느 저장 단계든 실패하면 전체 트랜잭션을 rollback하고 503을 반환한다. 커밋한 뒤에야 사용자 조회와 Argon2로 넘어간다. 그래서 해시 계산 중에는 레이트리밋 트랜잭션이 열려 있지 않다.
-- 한도를 넘긴 요청도 카운트는 올라간다. 고정 윈도라서 윈도 시작 시각은 늘어나지 않는다.
+- 한도를 넘긴 요청도 IP 카운트는 올라간다. 이메일 카운트는 IP 한도를 통과한 요청만 올린다. 고정 윈도라서 윈도 시작 시각은 늘어나지 않는다.
 
 #### 5.1.4 서비스 (`app/services/rate_limit.py` 신규)
 
@@ -198,7 +198,7 @@ def enforce_auth_rate_limit(db, *, action: Literal["login", "signup"], client_ip
 ```
 
 - `settings.auth_rate_limit_enabled`가 False면 즉시 반환한다(DB 접근 없음).
-- `retry_after = ceil(window_started_at + window - now)`. 1 이상이며 넘긴 버킷 중 최댓값을 쓴다.
+- `retry_after = max(1, ceil(window_started_at + window - now))`. IP 한도를 넘으면 IP 버킷의 남은 시간만 반환한다. IP 한도 이내에서 이메일 한도를 넘으면 이메일 버킷의 남은 시간을 반환한다. IP 거부 시 이메일 버킷은 조회하지 않으므로 IP 대기 시간 뒤에도 이메일 한도가 남아 있으면 다시 429를 받을 수 있다.
 - UPSERT나 단일 `commit()`에서 저장소 오류가 나면 `db.rollback()` → `log_database_failure("rate_limit", ...)` → `ServiceUnavailable`(D6). 로그인은 두 버킷을 한 연결에서 소비하므로 버킷마다 새 연결을 만들지 않는다.
 
 #### 5.1.5 API (`app/api/auth.py`, `app/api/deps.py`, `app/api/errors.py`)
