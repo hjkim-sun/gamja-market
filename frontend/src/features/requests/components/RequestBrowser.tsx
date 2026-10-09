@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
+import { MAX_LIST_PAGE } from '@/lib/api/requests';
 import type { PurchaseRequestSummary } from '@/types/request';
 
 import { RequestFilterBar, type RequestSort } from './RequestFilterBar';
@@ -28,7 +29,8 @@ export function RequestBrowser({ items, total, page, pageSize, categories }: Req
   const query = searchParams.get('q') ?? '';
 
   const hasActiveFilters = Boolean(selectedCategory || openOnly || query.trim());
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  // 백엔드/SSR이 MAX_LIST_PAGE로 page를 제한하므로 UI도 같은 상한을 넘지 않게 한다.
+  const totalPages = Math.min(MAX_LIST_PAGE, Math.max(1, Math.ceil(total / pageSize)));
 
   function updateParam(key: 'category' | 'status' | 'sort', value: string) {
     const params = new URLSearchParams(searchParams.toString());
