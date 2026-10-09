@@ -286,3 +286,16 @@ describe('구매요청 API 클라이언트', () => {
     expect(requestsApi.isSafeImageUrl(url)).toBe(false);
   });
 });
+
+describe('목록 page 입력 상한', () => {
+  it('잘못된 값은 1로 보정하고 소수는 내림, 500 초과는 500으로 제한한다', () => {
+    const resolve = (requestsApi as unknown as { resolveListPage?: (value?: string) => number }).resolveListPage;
+    expect(resolve, '미구현: resolveListPage page 보정 함수').toBeTypeOf('function');
+    expect(resolve?.()).toBe(1);
+    for (const value of ['abc', '0', '-3']) expect(resolve?.(value)).toBe(1);
+    expect(resolve?.('2.7')).toBe(2);
+    expect(resolve?.('501')).toBe(500);
+    expect(resolve?.('99999')).toBe(500);
+    expect(resolve?.('500')).toBe(500);
+  });
+});

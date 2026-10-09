@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+import os
 import re
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -15,7 +19,20 @@ from app.api.deps import expire_session_cookie
 from app.core.config import get_settings
 from app.api.errors import ApiError, error_from_exception, error_response
 
-app = FastAPI(title="Gamja Market API")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
+    if os.environ.get("ENV", "").strip().lower() == "production" and not settings.trust_proxy_ip_headers:
+        logger.warning(
+            "TRUST_PROXY_IP_HEADERS=false in production; Vercel requests will share the proxy IP rate-limit bucket"
+        )
+    yield
+
+
+app = FastAPI(title="Gamja Market API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(requests_router)
 app.include_router(request_photos_router)

@@ -65,7 +65,7 @@ class RequestListParams(RequestSchema):
     category: RequestCategory | None = None
     status: str | None = None
     sort: str | None = None
-    page: int = Field(default=1, ge=1)
+    page: int = Field(default=1, ge=1, le=500)
     page_size: int = Field(default=12, ge=1, le=50)
 
     @field_validator("q", mode="before")

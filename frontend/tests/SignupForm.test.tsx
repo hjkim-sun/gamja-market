@@ -265,3 +265,22 @@ describe('SignupForm 서버 오류 표시', () => {
     expect(emailInput()).toHaveAttribute('aria-invalid', 'true');
   });
 });
+
+
+it('429는 서버 안내를 표시하고 두 비밀번호를 지우며 이동하지 않는다', async () => {
+  replace.mockClear();
+  setupFetch(() => jsonResponse(429, {
+    error: { code: 'RATE_LIMITED', message: '요청이 너무 많아요. 잠시 후 다시 시도해 주세요.', fields: {} },
+  }));
+  const user = userEvent.setup();
+  await renderForm();
+  await user.type(emailInput(), 'buyer@example.com');
+  await user.type(passwordInput(), 'potato-pass-123');
+  await user.type(confirmationInput(), 'potato-pass-123');
+  await user.click(submitButton());
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('요청이 너무 많아요. 잠시 후 다시 시도해 주세요.'));
+  expect(emailInput()).toHaveValue('buyer@example.com');
+  expect(passwordInput()).toHaveValue('');
+  expect(confirmationInput()).toHaveValue('');
+  expect(replace).not.toHaveBeenCalled();
+});

@@ -19,7 +19,21 @@ class Settings(BaseSettings):
     migration_database_url: str | None = Field(default=None, min_length=1)
     auth_allowed_origins: list[str] = Field(min_length=1)
     session_cookie_secure: bool
-    session_ttl_seconds: int = Field(default=604800, gt=0)
+    session_ttl_seconds: int = Field(default=604800, gt=0, le=2_592_000)
+    auth_rate_limit_enabled: bool = True
+    auth_login_ip_limit: int = Field(default=30, ge=1)
+    auth_login_email_limit: int = Field(default=10, ge=1)
+    auth_login_window_seconds: int = Field(default=600, ge=1, le=86400)
+    auth_signup_ip_limit: int = Field(default=10, ge=1)
+    auth_signup_window_seconds: int = Field(default=3600, ge=1, le=86400)
+    image_normalize_wait_seconds: float = Field(default=10.0, gt=0, le=30)
+    trust_proxy_ip_headers: bool = False
+    database_pool_mode: str = "null"
+    database_pool_size: int = Field(default=2, ge=1, le=10)
+    database_max_overflow: int = Field(default=2, ge=0, le=10)
+    database_pool_recycle_seconds: int = Field(default=300, ge=30)
+    database_pool_timeout_seconds: int = Field(default=5, ge=1, le=30)
+    database_disable_prepared_statements: bool = False
     session_cookie_name: str = "gamja_session"
     application_lock_timeout_ms: int = Field(default=5000, ge=100, le=30000)
     photo_storage_driver: str = "disabled"
@@ -66,6 +80,8 @@ class Settings(BaseSettings):
     def require_https_cookie_in_production(self) -> "Settings":
         if self.migration_database_url is None:
             self.migration_database_url = self.database_url
+        if self.database_pool_mode not in {"null", "queue"}:
+            raise ValueError("DATABASE_POOL_MODE must be null or queue")
         if any(origin.startswith("https://") for origin in self.auth_allowed_origins) and not self.session_cookie_secure:
             raise ValueError("SESSION_COOKIE_SECURE must be true for HTTPS origins")
         if self.photo_storage_driver not in {"disabled", "local", "supabase"}:

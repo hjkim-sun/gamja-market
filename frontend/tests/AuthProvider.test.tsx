@@ -12,11 +12,12 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 function Probe() {
-  const { status, user, login } = useAuth();
+  const { status, user, login, refresh } = useAuth();
   return (
     <div>
       <span data-testid="status">{status}</span>
       <span data-testid="email">{user?.email ?? '-'}</span>
+      <button type="button" onClick={() => void refresh()}>수동 갱신</button>
       <button
         type="button"
         onClick={() => {
@@ -129,4 +130,29 @@ describe('AuthProvider 상태 전이', () => {
     expect(init.cache).toBe('no-store');
     expect(init.credentials).toBe('same-origin');
   });
+});
+
+
+it('focus와 visibilitychange 재검증을 2초 동안 한 번으로 제한한다', async () => {
+  const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () =>
+    jsonResponse(401, { error: { code: 'UNAUTHENTICATED', message: '로그인이 필요합니다.', fields: {} } }),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AuthProvider><Probe /></AuthProvider>);
+  await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('anonymous'));
+  window.dispatchEvent(new Event('focus'));
+  document.dispatchEvent(new Event('visibilitychange'));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  await new Promise((resolve) => setTimeout(resolve, 2100));
+  window.dispatchEvent(new Event('focus'));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  const visibility = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+  document.dispatchEvent(new Event('visibilitychange'));
+  await Promise.resolve();
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  Object.defineProperty(document, 'visibilityState', visibility ?? { configurable: true, value: 'visible' });
+  await userEvent.click(screen.getByRole('button', { name: '수동 갱신' }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
 });

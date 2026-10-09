@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import ipaddress
 
 from fastapi import Depends, Request, Response
 from sqlalchemy.exc import SQLAlchemyError
@@ -18,6 +19,28 @@ from app.storage.local import LocalPhotoStorage
 from app.storage.supabase import SupabasePhotoStorage
 
 _SESSION_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
+
+
+def client_ip(request: Request, settings: Settings) -> str:
+    fallback = request.client.host if request.client is not None else None
+    candidate = fallback
+    if settings.trust_proxy_ip_headers:
+        forwarded = request.headers.get("x-forwarded-for")
+        candidate = forwarded.split(",", 1)[0].strip() if forwarded else request.headers.get("x-real-ip", fallback)
+    address = None
+    for value in (candidate, fallback) if candidate != fallback else (candidate,):
+        if not value:
+            continue
+        try:
+            address = ipaddress.ip_address(value)
+            break
+        except ValueError:
+            continue
+    if address is None:
+        return "unknown"
+    if address.version == 6:
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return str(address)
 
 
 def expire_session_cookie(response: Response, settings: Settings) -> None:

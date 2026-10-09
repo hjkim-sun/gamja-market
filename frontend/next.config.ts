@@ -32,6 +32,18 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  /** 다른 사이트가 우리 페이지를 iframe으로 감싸는 클릭재킹을 막는다(설계서 10 §6.2). */
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Frame-Options', value: 'DENY' },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

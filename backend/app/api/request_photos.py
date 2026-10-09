@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, get_photo_storage, require_same_origin_mutation
 from app.api.errors import ApiError
+from app.core.config import Settings, get_settings
 from app.db.models import PurchaseRequestPhoto, User
 from app.services.errors import ServiceUnavailable
-from app.services.photo_validation import ImageTooLarge, InvalidImage, MAX_BYTES, normalize_image
+from app.services.photo_validation import ImageNormalizationBusy, ImageTooLarge, InvalidImage, MAX_BYTES, normalization_wait_limit, normalize_image
 from app.services.request_photos import PhotoLimitExceeded, PhotoNotFound, PhotoUnavailable, active_upload_count, discard_pending, upload_normalized
 from app.storage.base import StorageError
 
@@ -31,7 +32,7 @@ async def _read_limited(request: Request) -> bytes:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_same_origin_mutation)])
-async def upload_photo(request: Request, response: Response, user: User = Depends(get_current_user), db: Session = Depends(get_db), storage=Depends(get_photo_storage)):
+async def upload_photo(request: Request, response: Response, user: User = Depends(get_current_user), db: Session = Depends(get_db), storage=Depends(get_photo_storage), settings: Settings = Depends(get_settings)):
     response.headers["Cache-Control"] = "no-store"
     if storage is None:
         raise ApiError(503, "PHOTO_STORAGE_UNAVAILABLE")
@@ -41,23 +42,29 @@ async def upload_photo(request: Request, response: Response, user: User = Depend
     length = request.headers.get("content-length")
     if length and length.isdigit() and int(length) > MAX_BYTES:
         raise ApiError(413, "PAYLOAD_TOO_LARGE")
+    uploader_id = user.id
     try:
-        if await run_in_threadpool(active_upload_count, db, user.id) >= 10:
+        if await run_in_threadpool(active_upload_count, db, uploader_id) >= 10:
             raise ApiError(409, "PHOTO_LIMIT_EXCEEDED")
     except ApiError:
         raise
     except Exception:
-        db.rollback()
+        await run_in_threadpool(db.rollback)
         raise ApiError(503, "SERVICE_UNAVAILABLE") from None
+    finally:
+        await run_in_threadpool(lambda: db.close())
     data = await _read_limited(request)
     try:
-        image = await run_in_threadpool(normalize_image, data, content_type)
+        with normalization_wait_limit(settings.image_normalize_wait_seconds):
+            image = await run_in_threadpool(normalize_image, data, content_type)
+    except ImageNormalizationBusy:
+        raise ApiError(503, "SERVICE_UNAVAILABLE") from None
     except ImageTooLarge:
         raise ApiError(413, "PAYLOAD_TOO_LARGE") from None
     except InvalidImage:
         raise ApiError(422, "INVALID_IMAGE") from None
     try:
-        photo = await run_in_threadpool(upload_normalized, db, uploader_id=user.id, image=image, storage=storage)
+        photo = await run_in_threadpool(upload_normalized, db, uploader_id=uploader_id, image=image, storage=storage)
     except PhotoLimitExceeded:
         raise ApiError(409, "PHOTO_LIMIT_EXCEEDED") from None
     except PhotoUnavailable:
@@ -96,11 +103,18 @@ def photo_file(photo_id: UUID, ext: str, db: Session = Depends(get_db), storage=
         db.rollback()
         raise ApiError(503, "SERVICE_UNAVAILABLE") from None
     if photo is None or not photo.storage_path.endswith(f".{ext}"):
+        db.close()
         raise ApiError(404, "NOT_FOUND")
+    storage_path, content_type = photo.storage_path, photo.content_type
+    db.close()
     try:
-        data = storage.read(photo.storage_path)
+        data = storage.read(storage_path)
     except (OSError, KeyError):
         raise ApiError(404, "NOT_FOUND") from None
     except StorageError:
         raise ApiError(503, "PHOTO_STORAGE_UNAVAILABLE") from None
-    return RawResponse(content=data, media_type=photo.content_type, headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=3600"})
+    return RawResponse(content=data, media_type=content_type, headers={
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "public, max-age=86400, immutable",
+        "Vercel-CDN-Cache-Control": "max-age=604800",
+    })
