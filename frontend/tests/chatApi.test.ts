@@ -92,6 +92,15 @@ describe('chat API', () => {
       expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBe(controller.signal);
     });
 
+    it('completed chat and request statuses are valid enum values', async () => {
+      const completed = {
+        ...messageList,
+        room: { ...roomState, chatStatus: 'completed', canSend: false, requestStatus: 'completed', applicationStatus: 'accepted' },
+      };
+      stubFetch(async () => jsonResponse(200, completed));
+      await expect(listMessages(roomId)).resolves.toEqual(completed);
+    });
+
     it.each([
       { ...messageList, room: { ...roomState, chatStatus: 'archived' } },
       { ...messageList, room: { ...roomState, canSend: 'yes' } },
@@ -213,6 +222,15 @@ describe('chat API', () => {
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('http://backend:8104/api/chat-rooms');
       expect(init).toMatchObject({ method: 'GET', cache: 'no-store', headers: { Cookie: 'gamja_session=token' } });
+    });
+
+    it('completed room list entries parse with the completed request status', async () => {
+      const completed = {
+        items: [{ ...roomListItem, chatStatus: 'completed', request: { ...roomListItem.request, status: 'completed' } }],
+        hasMore: false,
+      };
+      stubFetch(async () => jsonResponse(200, completed));
+      await expect(listChatRooms()).resolves.toEqual(completed);
     });
 
     it.each([

@@ -62,7 +62,11 @@ export function ApplyPanel({
   }
 
   if (viewerRole === 'applicant' && application) {
-    const copy = applicantCopy[application.status];
+    // 거래가 완료된 확정 판매자에게는 후기 작성으로 이어지는 링크를 준다(설계서 11.7).
+    const reviewable = application.status === 'accepted' && requestStatus === 'completed';
+    const copy = reviewable
+      ? { message: '거래가 완료됐어요. 후기를 남겨 보세요.', link: '후기 남기기' }
+      : applicantCopy[application.status];
     return (
       <div className="sticky bottom-0 z-30 -mx-4 mt-10 border-t border-stone-200 bg-white/95 px-4 py-4 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4">
@@ -70,7 +74,7 @@ export function ApplyPanel({
             {copy.message}
           </p>
           <Link
-            href={`/chats/${application.chatRoomId}`}
+            href={`/chats/${application.chatRoomId}${reviewable ? '#reviews' : ''}`}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 sm:ml-auto sm:w-auto sm:min-w-48"
           >
             {copy.link}

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, Validat
 REQUEST_CATEGORIES = ("디지털기기", "가전", "가구/인테리어", "의류", "도서", "기타")
 RequestCategory = Literal["디지털기기", "가전", "가구/인테리어", "의류", "도서", "기타"]
 RequestCondition = Literal["any", "new", "like_new", "used"]
-RequestStatus = Literal["open", "matched", "closed"]
+RequestStatus = Literal["open", "matched", "closed", "completed"]
 
 
 def to_camel(value: str) -> str:

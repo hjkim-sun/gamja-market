@@ -46,7 +46,7 @@ def get_state_for_participant(db: Session, *, room_id: UUID, viewer_id: UUID):
 def lock_for_send(db: Session, *, room_id: UUID, viewer_id: UUID):
     return db.execute(
         text("""
-            SELECT r.id AS room_id, a.id AS application_id, a.buyer_id, a.seller_id,
+            SELECT r.id AS room_id, a.id AS application_id, a.request_id, a.buyer_id, a.seller_id,
                    a.status AS application_status, p.status AS request_status
               FROM app_private.chat_rooms r
               JOIN app_private.seller_applications a ON a.id = r.application_id

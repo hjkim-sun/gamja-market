@@ -41,6 +41,17 @@ def lock_application_in_request(db: Session, *, request_id: UUID, application_id
     )
 
 
+def lock_accepted_application(db: Session, request_id: UUID):
+    from app.db.models import ChatRoom
+
+    return db.execute(
+        select(SellerApplication.id, ChatRoom.id.label("room_id"))
+        .join(ChatRoom, ChatRoom.application_id == SellerApplication.id)
+        .where(SellerApplication.request_id == request_id, SellerApplication.status == "accepted")
+        .with_for_update(of=SellerApplication)
+    ).one_or_none()
+
+
 def accept_application(db: Session, *, application_id: UUID) -> int:
     from sqlalchemy import func, update
 

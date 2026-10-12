@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.auth import router as auth_router
 from app.api.applications import chat_rooms_router, router as applications_router
 from app.api.request_photos import router as request_photos_router
+from app.api.reviews import router as reviews_router
 from app.api.requests import router as requests_router
 from app.api.deps import expire_session_cookie
 from app.core.config import get_settings
@@ -35,6 +36,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Gamja Market API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(requests_router)
+app.include_router(reviews_router)
 app.include_router(request_photos_router)
 app.include_router(applications_router)
 app.include_router(chat_rooms_router)
@@ -94,6 +96,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         "message": "지원 메시지는 2자 이상 500자 이하로 입력해 주세요.",
     }
     match_fields = {"applicationId": "확정할 지원을 선택해 주세요."}
+    review_fields = {"rating": "평점은 1점부터 5점까지 선택해 주세요.", "body": "후기는 2자 이상 500자 이하로 입력해 주세요."}
     message_fields = {
         "body": "메시지는 1자 이상 1000자 이하로 입력해 주세요.",
         "clientMessageId": "입력값을 확인해 주세요.",
@@ -106,6 +109,8 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         allowed = application_fields
     elif re.fullmatch(r"/api/requests/[^/]+/match", path):
         allowed = match_fields
+    elif re.fullmatch(r"/api/requests/[^/]+/reviews", path):
+        allowed = review_fields
     elif re.fullmatch(r"/api/chat-rooms/[^/]+/messages", path):
         allowed = message_fields
     elif path.startswith("/api/chat-rooms"):
@@ -127,6 +132,8 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             fields[field] = allowed[field]
     if not fields and re.fullmatch(r"/api/requests/[^/]+/match", path):
         fields["applicationId"] = match_fields["applicationId"]
+    if not fields and re.fullmatch(r"/api/requests/[^/]+/reviews", path) and request.method == "POST":
+        fields["body"] = review_fields["body"]
     if not fields and re.fullmatch(r"/api/chat-rooms/[^/]+/messages", path) and request.method == "POST":
         fields["body"] = message_fields["body"]
     return _api_no_store(error_response(422, "VALIDATION_ERROR", fields=fields), path)

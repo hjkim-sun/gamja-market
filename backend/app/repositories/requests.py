@@ -55,6 +55,10 @@ def get_by_id(db: Session, request_id: UUID) -> tuple[PurchaseRequest, str, int]
     ).one_or_none()
 
 
+def get_status(db: Session, request_id: UUID) -> str | None:
+    return db.scalar(select(PurchaseRequest.status).where(PurchaseRequest.id == request_id))
+
+
 def list_and_count(
     db: Session,
     *,

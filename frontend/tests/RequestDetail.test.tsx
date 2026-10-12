@@ -27,12 +27,15 @@ const request = {
   photos: [],
 };
 
-function renderDetail() {
+function renderDetail(
+  overrides: Partial<ComponentProps<typeof RequestDetail>> & { initialReviews?: unknown } = {},
+) {
   const props = {
     request,
     applications: [],
     viewerRole: 'owner',
     applicantCount: 0,
+    ...overrides,
   } as unknown as ComponentProps<typeof RequestDetail>;
   return render(<RequestDetail {...props} />);
 }
@@ -50,6 +53,27 @@ describe('RequestDetail', () => {
     expect(screen.queryByRole('button', { name: /수정/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /삭제/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /수정/ })).not.toBeInTheDocument();
+  });
+
+  it('completed 상세는 익명 방문자에게도 후기만 공개하고 쓰기 패널은 보이지 않는다', () => {
+    const publicRequest = { ...request, status: 'completed', isOwner: false };
+    const initialReviews = {
+      requestId: request.id, requestStatus: 'completed', completedAt: request.updatedAt,
+      items: [{ reviewerRole: 'buyer', rating: 5, body: '공개 후기', createdAt: request.updatedAt }],
+      viewerRole: null, canWrite: false, mine: null, received: null,
+    };
+    renderDetail({
+      request: publicRequest as never, viewerRole: 'anonymous', applicantCount: 1, initialReviews: initialReviews as never,
+    });
+    expect(screen.getByRole('heading', { name: '거래 후기' })).toBeInTheDocument();
+    expect(screen.getByText('공개 후기')).toBeInTheDocument();
+    expect(screen.getByText('지원 내용은 구매자와 해당 판매자만 볼 수 있어요.')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it.each(['open', 'matched', 'closed'] as const)('%s 상세에는 후기 영역을 렌더하지 않는다', (status) => {
+    renderDetail({ request: { ...request, status } as never });
+    expect(screen.queryByRole('heading', { name: '거래 후기' })).not.toBeInTheDocument();
   });
 
   it('지원자 0건을 정직하게 표시하고 가짜 판매자를 만들지 않는다', () => {

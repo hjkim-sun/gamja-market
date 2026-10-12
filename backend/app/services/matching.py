@@ -74,7 +74,7 @@ def confirm_match(
         if request.status == "matched":
             db.rollback()
             raise RequestAlreadyMatched
-        if request.status == "closed":
+        if request.status in {"closed", "completed"}:
             db.rollback()
             raise RequestClosed
         if request.status != "open" or application.status != "pending":
