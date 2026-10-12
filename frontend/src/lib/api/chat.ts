@@ -33,11 +33,11 @@ function isApplicationStatus(value: unknown): value is ApplicationStatus {
 }
 
 function isChatStatus(value: unknown): value is ChatStatus {
-  return value === 'active' || value === 'matched' || value === 'closed';
+  return value === 'active' || value === 'matched' || value === 'closed' || value === 'completed';
 }
 
 function isRequestStatus(value: unknown): value is RequestStatus {
-  return value === 'open' || value === 'matched' || value === 'closed';
+  return value === 'open' || value === 'matched' || value === 'closed' || value === 'completed';
 }
 
 function isSenderRole(value: unknown): value is ChatMessage['senderRole'] {

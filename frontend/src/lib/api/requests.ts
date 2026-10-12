@@ -70,7 +70,7 @@ interface RequestOpts {
 }
 
 function isRequestStatus(value: unknown): value is PurchaseRequestSummary['status'] {
-  return value === 'open' || value === 'matched' || value === 'closed';
+  return value === 'open' || value === 'matched' || value === 'closed' || value === 'completed';
 }
 
 function isProductCondition(value: unknown): value is PurchaseRequestSummary['condition'] {

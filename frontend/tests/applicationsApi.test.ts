@@ -75,6 +75,22 @@ describe('applications API', () => {
     expect(JSON.parse(String(init.body))).toEqual(payload);
   });
 
+  it('completed room and request statuses remain parseable after matching', async () => {
+    const completedRoom = {
+      ...chatRoom,
+      applicationStatus: 'accepted',
+      chatStatus: 'completed',
+      canSend: false,
+      request: { ...chatRoom.request, status: 'completed' },
+    };
+    const acceptedApplication = { ...application, status: 'accepted' };
+    stubFetch(async () => jsonResponse(201, { application: acceptedApplication, chatRoom: completedRoom }));
+    await expect(applicationsApi.applyToRequest(requestId, { offerPrice: 1, message: '지원 메시지' })).resolves.toMatchObject({
+      application: { status: 'accepted' },
+      chatRoom: { chatStatus: 'completed', request: { status: 'completed' }, canSend: false },
+    });
+  });
+
   it.each([
     { application: { ...application, chatRoomId: 3 }, chatRoom },
     { application, chatRoom: { ...chatRoom, viewerRole: 'owner' } },

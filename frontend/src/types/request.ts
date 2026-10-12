@@ -1,4 +1,4 @@
-export type RequestStatus = 'open' | 'matched' | 'closed';
+export type RequestStatus = 'open' | 'matched' | 'closed' | 'completed';
 
 export type ProductCondition = 'any' | 'new' | 'like_new' | 'used';
 

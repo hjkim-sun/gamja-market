@@ -7,12 +7,13 @@ import { ApiError } from '@/types/api';
 import type { ChatRoom } from '@/types/application';
 import type { ChatMessage, MessageList, MessageRoomState } from '@/types/chat';
 
-const { listMessagesMock, sendMessageMock, routerPush, routerRefresh, router } = vi.hoisted(() => {
+const { listMessagesMock, sendMessageMock, completeTransactionMock, routerPush, routerRefresh, router } = vi.hoisted(() => {
   const push = vi.fn();
   const refresh = vi.fn();
   return {
     listMessagesMock: vi.fn(),
     sendMessageMock: vi.fn(),
+    completeTransactionMock: vi.fn(),
     routerPush: push,
     routerRefresh: refresh,
     // 실제 Next 라우터처럼 렌더마다 같은 객체를 돌려준다.
@@ -22,6 +23,7 @@ const { listMessagesMock, sendMessageMock, routerPush, routerRefresh, router } =
 
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('@/lib/api/chat', () => ({ listMessages: listMessagesMock, sendMessage: sendMessageMock }));
+vi.mock('@/lib/api/reviews', () => ({ completeTransaction: completeTransactionMock }));
 
 const room: ChatRoom = {
   id: 'room-1',
@@ -105,6 +107,7 @@ describe('ChatMessagePanel 폴링', () => {
     vi.useFakeTimers();
     listMessagesMock.mockReset();
     sendMessageMock.mockReset();
+    completeTransactionMock.mockReset();
     routerPush.mockReset();
     routerRefresh.mockReset();
     setVisibility('visible');
@@ -357,6 +360,7 @@ describe('ChatMessagePanel 병합과 전송', () => {
     vi.useFakeTimers();
     listMessagesMock.mockReset();
     sendMessageMock.mockReset();
+    routerRefresh.mockReset();
     routerPush.mockReset();
     setVisibility('visible');
     // RTL의 asyncWrapper는 jest 전역이 있어야 가짜 타이머를 진행시킨다(vitest 사용 시 shim 필요).
@@ -665,6 +669,76 @@ describe('ChatMessagePanel 병합과 전송', () => {
     expect(screen.getByText('매칭이 확정된 채팅방이에요. 거래 일정을 이야기해 보세요.')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '메시지 입력' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: '이 판매자로 확정' })).not.toBeInTheDocument();
+  });
+
+  it('matched buyer sees the transaction completion button, while the seller does not', () => {
+    const matchedRoomState: MessageRoomState = {
+      ...activeState, chatStatus: 'matched', canSend: true, applicationStatus: 'accepted', requestStatus: 'matched',
+    };
+    const matchedRoom = { viewerRole: 'buyer' as const, chatStatus: 'matched' as const, request: { ...room.request, status: 'matched' as const } };
+    const { unmount } = renderPanel(list([msg(1)], { room: matchedRoomState }), matchedRoom);
+    expect(screen.getByRole('button', { name: '거래 완료' })).toBeInTheDocument();
+    unmount();
+
+    const sellerRoom = { ...matchedRoom, viewerRole: 'seller' as const };
+    renderPanel(list([msg(1)], { room: matchedRoomState }), sellerRoom);
+    expect(screen.queryByRole('button', { name: '거래 완료' })).not.toBeInTheDocument();
+  });
+
+  it('completion poll locks the room and refreshes once to show reviews', async () => {
+    const completedState = {
+      ...activeState, chatStatus: 'completed' as const, canSend: false,
+      applicationStatus: 'accepted' as const, requestStatus: 'completed' as const,
+    };
+    // 부모는 아직 matched 상태로 그려졌고 폴링이 처음 completed를 관측하는 경우다.
+    const matchedParent = {
+      viewerRole: 'seller' as const, chatStatus: 'matched' as const, canSend: true,
+      request: { ...room.request, status: 'matched' as const },
+    };
+    listMessagesMock.mockResolvedValue(list([], { room: completedState, latestSeq: 2 }));
+    renderPanel(list([msg(1), msg(2)]), matchedParent);
+    await advance(3_000);
+    expect(screen.getByText('거래가 완료된 채팅방이에요. 이전 대화만 볼 수 있어요.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '메시지 입력' })).toBeDisabled();
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    await advance(3_000);
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('방과 메시지를 동시에 읽어 initialList만 completed여도 부모가 matched면 completed 폴링에서 한 번 refresh한다', async () => {
+    const completedState = {
+      ...activeState, chatStatus: 'completed' as const, canSend: false,
+      applicationStatus: 'accepted' as const, requestStatus: 'completed' as const,
+    };
+    const matchedParent = {
+      viewerRole: 'seller' as const, chatStatus: 'matched' as const, canSend: true,
+      request: { ...room.request, status: 'matched' as const },
+    };
+    listMessagesMock.mockResolvedValue(list([], { room: completedState, latestSeq: 2 }));
+    renderPanel(list([msg(1), msg(2)], { room: completedState }), matchedParent);
+    expect(routerRefresh).not.toHaveBeenCalled();
+    await advance(3_000);
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(afterSeqOf(0)).toBe(2);
+    await advance(6_000);
+    expect(listMessagesMock).toHaveBeenCalledTimes(3);
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('부모가 처음부터 completed면 completed 폴링에서도 refresh하지 않는다', async () => {
+    const completedState = {
+      ...activeState, chatStatus: 'completed' as const, canSend: false,
+      applicationStatus: 'accepted' as const, requestStatus: 'completed' as const,
+    };
+    const completedParent = {
+      viewerRole: 'seller' as const, chatStatus: 'completed' as const, canSend: false,
+      request: { ...room.request, status: 'completed' as const },
+    };
+    listMessagesMock.mockResolvedValue(list([], { room: completedState, latestSeq: 2 }));
+    renderPanel(list([msg(1), msg(2)], { room: completedState }), completedParent);
+    await advance(6_000);
+    expect(listMessagesMock).toHaveBeenCalledTimes(2);
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 
   it('스크롤을 올려 둔 상태에서 상대 메시지가 오면 “새 메시지 ↓” 버튼을 보이고 누르면 바닥으로 간다', async () => {

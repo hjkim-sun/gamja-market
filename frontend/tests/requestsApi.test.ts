@@ -269,6 +269,12 @@ describe('구매요청 API 클라이언트', () => {
     expect((caught as ApiError).code).toBe('INTERNAL_ERROR');
   });
 
+  it('completed 상태의 공개 요청 상세를 파싱한다', async () => {
+    const completedDetail = { ...detail, status: 'completed' };
+    stubFetch(async () => jsonResponse(200, completedDetail));
+    await expect(requestsApi.getRequest(detail.id)).resolves.toMatchObject({ status: 'completed' });
+  });
+
   it('수정·삭제 API를 export하지 않는다', () => {
     expect('updateRequest' in requestsApi).toBe(false);
     expect('deleteRequest' in requestsApi).toBe(false);

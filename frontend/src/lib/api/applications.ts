@@ -38,7 +38,7 @@ function isApplicationStatus(value: unknown): value is ApplicationStatus {
 }
 
 function isChatStatus(value: unknown): value is ChatStatus {
-  return value === 'active' || value === 'matched' || value === 'closed';
+  return value === 'active' || value === 'matched' || value === 'closed' || value === 'completed';
 }
 
 function parseApplication(value: unknown): Application | null {
@@ -84,7 +84,7 @@ function isChatRoomViewerRole(value: unknown): value is ChatRoom['viewerRole'] {
 }
 
 function isRequestStatus(value: unknown): value is ChatRoom['request']['status'] {
-  return value === 'open' || value === 'matched' || value === 'closed';
+  return value === 'open' || value === 'matched' || value === 'closed' || value === 'completed';
 }
 
 function parseChatRoom(value: unknown): ChatRoom | null {

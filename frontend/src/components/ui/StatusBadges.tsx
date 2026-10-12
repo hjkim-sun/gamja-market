@@ -18,12 +18,14 @@ const chatStyles: Record<ChatStatus, string> = {
   active: applicationStyles.pending,
   matched: applicationStyles.accepted,
   closed: applicationStyles.closed,
+  completed: 'bg-violet-50 text-violet-700 ring-violet-600/20',
 };
 
 const chatLabels: Record<ChatStatus, string> = {
   active: '협의 중',
   matched: '매칭 확정',
   closed: '마감',
+  completed: '거래 완료',
 };
 
 export function ApplicationStatusBadge({ status }: { status: ApplicationStatus }) {

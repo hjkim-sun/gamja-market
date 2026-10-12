@@ -22,6 +22,10 @@ export type ApiErrorCode =
   | 'REQUEST_ALREADY_MATCHED'
   | 'REQUEST_CLOSED'
   | 'CHAT_ROOM_CLOSED'
+  | 'COMPLETION_FORBIDDEN'
+  | 'REQUEST_NOT_MATCHED'
+  | 'REQUEST_NOT_COMPLETED'
+  | 'ALREADY_REVIEWED'
   | 'RATE_LIMITED';
 
 export type ApiErrorFields = Partial<Record<string, string>>;

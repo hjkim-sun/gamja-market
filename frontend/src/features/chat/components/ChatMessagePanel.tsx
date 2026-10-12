@@ -5,6 +5,7 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } fr
 
 import { Button } from '@/components/ui/Button';
 import { ConfirmMatchButton } from '@/features/matching/components/ConfirmMatchButton';
+import { CompleteTransactionButton } from '@/features/transactions/components/CompleteTransactionButton';
 import { listMessages, sendMessage } from '@/lib/api/chat';
 import { formatDateTime } from '@/lib/format';
 import { ApiError } from '@/types/api';
@@ -77,9 +78,18 @@ export function ChatMessagePanel({ room, initialList }: ChatMessagePanelProps) {
   const mountedRef = useRef(false);
   const sendControllersRef = useRef<Set<AbortController>>(new Set());
 
-  // router.refresh()로 서버가 새 방 상태를 내려주면(확정 직후 등) 로컬 상태를 맞춘다.
+  // 부모(서버 컴포넌트)가 그린 방 상태. 후기 패널은 이 값이 completed일 때만 있으므로 matched → completed 전이를
+  // 처음 볼 때 한 번만 화면을 갱신하는 기준이다. 방·메시지를 동시에 읽으므로 initialList가 더 최신일 수 있어
+  // initialList가 아니라 room.chatStatus에서 시작한다.
+  const observedStatusRef = useRef<ChatStatus>(room.chatStatus);
+  const roomSyncedRef = useRef(false);
+
+  // router.refresh()로 서버가 새 방 상태를 내려주면(확정·완료 직후 등) 로컬 상태를 맞춘다.
   useEffect(() => {
     setRoomState({ chatStatus: room.chatStatus, canSend: room.canSend });
+    // 마운트 이후 서버가 내려준 상태는 이미 화면에 반영됐으므로 폴링의 완료 전이 판정 기준도 함께 맞춘다.
+    if (roomSyncedRef.current) observedStatusRef.current = room.chatStatus;
+    roomSyncedRef.current = true;
   }, [room.chatStatus, room.canSend]);
 
   useEffect(() => {
@@ -124,6 +134,12 @@ export function ChatMessagePanel({ room, initialList }: ChatMessagePanelProps) {
         failures = 0;
         setUnstable(false);
         setRoomState({ chatStatus: list.room.chatStatus, canSend: list.room.canSend });
+        const becameCompleted =
+          list.room.chatStatus === 'completed' && observedStatusRef.current !== 'completed';
+        observedStatusRef.current = list.room.chatStatus;
+        // 상대가 거래를 완료한 순간 한 번만 서버 화면을 갱신해 후기 패널이 나타나게 한다.
+        // 커서(lastSeqRef)와 폴링 주기는 그대로 둔다.
+        if (becameCompleted) routerRef.current.refresh();
         if (afterSeq === undefined) setHasOlder(list.hasOlder);
 
         if (list.items.length > 0) {
@@ -237,7 +253,12 @@ export function ChatMessagePanel({ room, initialList }: ChatMessagePanelProps) {
 
         if (caught instanceof ApiError && caught.code === 'CHAT_ROOM_CLOSED') {
           setPending((current) => current.filter((item) => item.clientMessageId !== clientMessageId));
-          setRoomState({ chatStatus: 'closed', canSend: false });
+          // 확정(matched) 방이 전송 중 닫히는 경로는 거래 완료뿐이다(설계서 11.5).
+          setRoomState((current) =>
+            current.chatStatus === 'matched'
+              ? { chatStatus: 'completed', canSend: false }
+              : { chatStatus: 'closed', canSend: false },
+          );
         } else if (caught instanceof ApiError && caught.code === 'VALIDATION_ERROR') {
           setPending((current) => current.filter((item) => item.clientMessageId !== clientMessageId));
           setSendError(caught.fields.body ?? '메시지는 1자 이상 1000자 이하로 입력해 주세요.');
@@ -310,6 +331,10 @@ export function ChatMessagePanel({ room, initialList }: ChatMessagePanelProps) {
         <p className="mb-3 rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700" role="status">
           매칭이 확정된 채팅방이에요. 거래 일정을 이야기해 보세요.
         </p>
+      ) : chatStatus === 'completed' ? (
+        <p className="mb-3 rounded-xl bg-violet-50 px-4 py-3 text-sm font-bold text-violet-700" role="status">
+          거래가 완료된 채팅방이에요. 이전 대화만 볼 수 있어요.
+        </p>
       ) : chatStatus === 'closed' ? (
         <p className="mb-3 rounded-xl bg-stone-100 px-4 py-3 text-sm font-bold text-stone-700" role="status">
           {isBuyer
@@ -320,6 +345,10 @@ export function ChatMessagePanel({ room, initialList }: ChatMessagePanelProps) {
 
       {isBuyer && chatStatus === 'active' && !unavailable ? (
         <ConfirmMatchButton requestId={room.request.id} applicationId={room.applicationId} className="mb-3" />
+      ) : null}
+
+      {isBuyer && chatStatus === 'matched' && !unavailable ? (
+        <CompleteTransactionButton requestId={room.request.id} className="mb-3" />
       ) : null}
 
       {unstable ? (
@@ -429,7 +458,11 @@ export function ChatMessagePanel({ room, initialList }: ChatMessagePanelProps) {
               </span>
             ) : !canSend ? (
               <span className="text-stone-500">
-                {unavailable ? '채팅방을 볼 수 없어 메시지를 보낼 수 없어요.' : '마감된 채팅방에서는 메시지를 보낼 수 없어요.'}
+                {unavailable
+                  ? '채팅방을 볼 수 없어 메시지를 보낼 수 없어요.'
+                  : chatStatus === 'completed'
+                    ? '거래가 완료되어 메시지를 보낼 수 없어요.'
+                    : '마감된 채팅방에서는 메시지를 보낼 수 없어요.'}
               </span>
             ) : null}
           </span>

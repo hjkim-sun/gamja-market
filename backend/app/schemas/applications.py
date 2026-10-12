@@ -60,7 +60,7 @@ class ChatRoomView(RequestSchema):
     application_message: str
     created_at: datetime
     application_status: Literal["pending", "accepted", "closed"]
-    chat_status: Literal["active", "matched", "closed"]
+    chat_status: Literal["active", "matched", "closed", "completed"]
     can_send: bool
 
 
