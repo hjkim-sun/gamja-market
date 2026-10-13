@@ -12,6 +12,7 @@ from app.core.db_logging import log_database_failure
 from app.db.models import ChatMessage, User
 from app.repositories import chat_messages as message_repository
 from app.repositories import chat_rooms as room_repository
+from app.repositories import requests as request_repository
 from app.schemas.chat import MessageCreate, MessageListParams, MessageView
 from app.services.applications import ChatRoomNotFound
 from app.services.errors import ServiceUnavailable
@@ -22,11 +23,13 @@ class ChatRoomClosed(Exception):
     pass
 
 
-def derive_chat_status(application_status: str, request_status: str) -> Literal["active", "matched", "closed"]:
+def derive_chat_status(application_status: str, request_status: str) -> Literal["active", "matched", "closed", "completed"]:
     if application_status == "pending" and request_status == "open":
         return "active"
     if application_status == "accepted" and request_status == "matched":
         return "matched"
+    if application_status == "accepted" and request_status == "completed":
+        return "completed"
     return "closed"
 
 
@@ -108,7 +111,8 @@ def send_message(
             result = _dto_view(existing, viewer_id=viewer.id, buyer_id=room["buyer_id"], seller_id=room["seller_id"])
             db.rollback()
             return result, False
-        status = derive_chat_status(room["application_status"], room["request_status"])
+        request_status = request_repository.get_status(db, room["request_id"])
+        status = derive_chat_status(room["application_status"], request_status or "closed")
         if status not in {"active", "matched"}:
             db.rollback()
             raise ChatRoomClosed

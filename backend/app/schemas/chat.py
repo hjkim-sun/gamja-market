@@ -7,10 +7,10 @@ from uuid import UUID
 from pydantic import Field, StrictStr, field_validator
 
 from app.schemas.applications import MaskedUser
-from app.schemas.requests import RequestSchema
+from app.schemas.requests import RequestSchema, RequestStatus
 
 
-ChatStatus = Literal["active", "matched", "closed"]
+ChatStatus = Literal["active", "matched", "closed", "completed"]
 ApplicationStatus = Literal["pending", "accepted", "closed"]
 
 
@@ -39,7 +39,7 @@ class MessageRoomState(RequestSchema):
     chat_status: ChatStatus
     can_send: bool
     application_status: ApplicationStatus
-    request_status: Literal["open", "matched", "closed"]
+    request_status: RequestStatus
 
 
 class MessageListResponse(RequestSchema):
@@ -62,7 +62,7 @@ class MessageListParams(RequestSchema):
 class ChatRequestSummary(RequestSchema):
     id: UUID
     title: str
-    status: Literal["open", "matched", "closed"]
+    status: RequestStatus
 
 
 class LastMessageView(RequestSchema):

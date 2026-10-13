@@ -61,7 +61,8 @@ class PurchaseRequest(Base):
     __table_args__ = (
         CheckConstraint("price_min >= 0 AND price_max >= price_min", name="ck_purchase_requests_price_range"),
         CheckConstraint("price_max <= 1000000000", name="ck_purchase_requests_price_max_bound"),
-        CheckConstraint("status IN ('open', 'matched', 'closed')", name="ck_purchase_requests_status"),
+        CheckConstraint("status IN ('open', 'matched', 'closed', 'completed')", name="ck_purchase_requests_status"),
+        CheckConstraint("(status = 'completed') = (completed_at IS NOT NULL)", name="ck_purchase_requests_completed_at"),
         CheckConstraint("condition IN ('any', 'new', 'like_new', 'used')", name="ck_purchase_requests_condition"),
         CheckConstraint("char_length(btrim(title)) BETWEEN 2 AND 60", name="ck_purchase_requests_title_len"),
         CheckConstraint(
@@ -93,6 +94,7 @@ class PurchaseRequest(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PurchaseRequestPhoto(Base):
@@ -218,5 +220,32 @@ class ChatMessage(Base):
     sender_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     client_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+    __table_args__ = (
+        ForeignKeyConstraint(["request_id"], ["app_private.purchase_requests.id"], ondelete="CASCADE", name="fk_reviews_request"),
+        ForeignKeyConstraint(["reviewer_id"], ["app_private.users.id"], ondelete="CASCADE", name="fk_reviews_reviewer"),
+        ForeignKeyConstraint(["reviewee_id"], ["app_private.users.id"], ondelete="CASCADE", name="fk_reviews_reviewee"),
+        UniqueConstraint("request_id", "reviewer_id", name="uq_reviews_request_reviewer"),
+        UniqueConstraint("request_id", "reviewer_role", name="uq_reviews_request_role"),
+        CheckConstraint("reviewer_role IN ('buyer', 'seller')", name="ck_reviews_role"),
+        CheckConstraint("reviewer_id <> reviewee_id", name="ck_reviews_not_self"),
+        CheckConstraint("rating BETWEEN 1 AND 5", name="ck_reviews_rating"),
+        CheckConstraint("char_length(btrim(body)) BETWEEN 2 AND 500", name="ck_reviews_body_len"),
+        Index("ix_reviews_reviewee_id", "reviewee_id"),
+        Index("ix_reviews_reviewer_id", "reviewer_id"),
+        {"schema": "app_private"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    reviewee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    reviewer_role: Mapped[str] = mapped_column(String(6), nullable=False)
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

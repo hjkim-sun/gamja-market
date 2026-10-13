@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { ApplicationStatusBadge } from '@/components/ui/StatusBadges';
 import { ConfirmMatchButton } from '@/features/matching/components/ConfirmMatchButton';
+import { CompleteTransactionButton } from '@/features/transactions/components/CompleteTransactionButton';
 import { formatExactWon, formatRelativeTime } from '@/lib/format';
 import type { Application, ApplicationViewerRole } from '@/types/application';
 import type { RequestStatus } from '@/types/request';
@@ -29,6 +30,7 @@ function acceptedFirst(applications: Application[]): Application[] {
 export function ApplicantList({ applicantCount, viewerRole, applications, requestStatus }: ApplicantListProps) {
   const canSeeDetail = viewerRole === 'owner' || viewerRole === 'applicant';
   const canConfirm = viewerRole === 'owner' && requestStatus === 'open';
+  const canComplete = viewerRole === 'owner' && requestStatus === 'matched';
   return (
     <section className="mt-10" aria-labelledby="applicant-heading">
       <div className="mb-4 flex items-end justify-between">
@@ -89,6 +91,17 @@ export function ApplicantList({ applicantCount, viewerRole, applications, reques
                   채팅방 열기
                 </Link>
               </div>
+              {requestStatus === 'completed' && application.status === 'accepted' ? (
+                <Link
+                  href={`/chats/${application.chatRoomId}#reviews`}
+                  className="mt-4 inline-flex min-h-11 items-center text-sm font-bold text-violet-700 underline underline-offset-2 hover:text-violet-800"
+                >
+                  거래 후기
+                </Link>
+              ) : null}
+              {canComplete && application.status === 'accepted' ? (
+                <CompleteTransactionButton requestId={application.requestId} className="mt-4" />
+              ) : null}
               {canConfirm && application.status === 'pending' ? (
                 <ConfirmMatchButton
                   requestId={application.requestId}

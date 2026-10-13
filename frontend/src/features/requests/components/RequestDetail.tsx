@@ -1,11 +1,13 @@
 import { ApplicantList } from '@/features/requests/components/ApplicantList';
 import { ApplyPanel } from '@/features/applications/components/ApplyPanel';
+import { PublicReviewList } from '@/features/reviews/components/PublicReviewList';
 import { RequestPhotoGallery } from '@/features/requests/components/RequestPhotoGallery';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { formatDateTime, formatPriceRange } from '@/lib/format';
 import type { Application, ApplicationViewerRole } from '@/types/application';
 import type { ProductCondition, PurchaseRequestDetail } from '@/types/request';
+import type { TransactionReviews } from '@/types/review';
 
 const conditionLabels: Record<ProductCondition, string> = {
   any: '상관없음',
@@ -20,9 +22,17 @@ interface RequestDetailProps {
   /** null은 지원 현황 조회 자체가 실패한 상태다. 지원 UI를 아예 감춘다(설계서 11.3). */
   viewerRole: ApplicationViewerRole | null;
   applicantCount: number;
+  /** 완료된 요청의 SSR 후기. null은 조회 실패라 브라우저가 한 번 다시 조회한다. 완료 전 요청에서는 쓰지 않는다. */
+  initialReviews?: TransactionReviews | null;
 }
 
-export function RequestDetail({ request, applications, viewerRole, applicantCount }: RequestDetailProps) {
+export function RequestDetail({
+  request,
+  applications,
+  viewerRole,
+  applicantCount,
+  initialReviews = null,
+}: RequestDetailProps) {
   // applicant 역할은 목록에 본인 지원 1건만 내려온다(설계서 6.2).
   const ownApplication = viewerRole === 'applicant' ? (applications[0] ?? null) : null;
   return (
@@ -47,10 +57,10 @@ export function RequestDetail({ request, applications, viewerRole, applicantCoun
               {formatPriceRange(request.priceMin, request.priceMax)}
             </p>
           </div>
-          <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[1fr_280px]">
-            <div>
+          <div className="grid grid-cols-1 gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="min-w-0">
               <h2 className="text-lg font-black text-stone-900">원하는 물건과 스펙</h2>
-              <p className="mt-4 whitespace-pre-wrap text-base leading-8 text-stone-700">{request.description}</p>
+              <p className="mt-4 whitespace-pre-wrap break-words text-base leading-8 text-stone-700">{request.description}</p>
 
               <dl className="mt-8 grid gap-4 border-t border-stone-100 pt-6 sm:grid-cols-2">
                 <div>
@@ -64,7 +74,7 @@ export function RequestDetail({ request, applications, viewerRole, applicantCoun
               </dl>
             </div>
 
-            <aside className="rounded-2xl bg-stone-50 p-5" aria-label="구매자 정보">
+            <aside className="min-w-0 rounded-2xl bg-stone-50 p-5" aria-label="구매자 정보">
               <p className="text-xs font-bold uppercase tracking-wider text-stone-400">구매자</p>
               <div className="mt-4 flex items-center gap-3">
                 <div className="grid size-12 place-items-center rounded-full bg-potato-200 text-2xl" aria-hidden="true">
@@ -78,6 +88,10 @@ export function RequestDetail({ request, applications, viewerRole, applicantCoun
           </div>
         </Card>
       </article>
+
+      {request.status === 'completed' ? (
+        <PublicReviewList id="reviews" requestId={request.id} initial={initialReviews} />
+      ) : null}
 
       <ApplicantList
         applicantCount={applicantCount}

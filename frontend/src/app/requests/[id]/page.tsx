@@ -5,10 +5,12 @@ import { notFound } from 'next/navigation';
 import { RequestDetail } from '@/features/requests/components/RequestDetail';
 import { listApplications } from '@/lib/api/applications';
 import { getRequest } from '@/lib/api/requests';
+import { getTransactionReviews } from '@/lib/api/reviews';
 import { resolveServerApiBase } from '@/lib/api/serverBase';
 import type { Application, ApplicationViewerRole } from '@/types/application';
 import { ApiError } from '@/types/api';
 import type { PurchaseRequestDetail } from '@/types/request';
+import type { TransactionReviews } from '@/types/review';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +44,18 @@ async function loadApplications(id: string, cookie: string | undefined): Promise
   }
 }
 
+/**
+ * 후기 조회 실패도 페이지를 실패시키지 않는다. null이면 후기 영역이 브라우저에서 한 번 다시 조회한다(설계서 11.9).
+ * 후기는 공개라 로그인 없이도 조회되며, 쿠키가 있으면 그대로 전달한다.
+ */
+async function loadReviews(id: string, cookie: string | undefined): Promise<TransactionReviews | null> {
+  try {
+    return await getTransactionReviews(id, { baseUrl: resolveServerApiBase(), cookie });
+  } catch {
+    return null;
+  }
+}
+
 export async function generateMetadata({ params }: RequestDetailPageProps): Promise<Metadata> {
   const { id } = await params;
   const cookie = (await headers()).get('cookie') ?? undefined;
@@ -65,6 +79,9 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
 
   if (!request) notFound();
 
+  // 완료되지 않은 요청은 후기 조회를 하지 않는다.
+  const initialReviews = request.status === 'completed' ? await loadReviews(id, cookie) : null;
+
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-9 sm:px-6 sm:py-12">
       {applications.ok ? (
@@ -73,6 +90,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
           applications={applications.items}
           viewerRole={applications.viewerRole}
           applicantCount={applications.applicantCount}
+          initialReviews={initialReviews}
         />
       ) : (
         <>
@@ -81,6 +99,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
             applications={[]}
             viewerRole={null}
             applicantCount={request.applicantCount}
+            initialReviews={initialReviews}
           />
           <ApplicationsErrorNotice />
         </>

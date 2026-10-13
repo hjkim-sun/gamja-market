@@ -3,17 +3,21 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { ChatMessagePanel } from '@/features/chat/components/ChatMessagePanel';
+import { ReviewPanel } from '@/features/reviews/components/ReviewPanel';
 import { formatDateTime, formatExactWon, formatPriceRange } from '@/lib/format';
 import type { ChatRoom } from '@/types/application';
 import type { MessageList } from '@/types/chat';
+import type { TransactionReviews } from '@/types/review';
 
 interface ChatRoomViewProps {
   room: ChatRoom;
   /** SSR로 받은 첫 메시지. 실패했으면 null이며 클라이언트 첫 폴링이 다시 시도한다. */
   initialMessages?: MessageList | null;
+  /** 완료된 방의 SSR 후기 조회 결과. 실패했거나 완료 전이면 null이다. */
+  initialReviews?: TransactionReviews | null;
 }
 
-export function ChatRoomView({ room, initialMessages = null }: ChatRoomViewProps) {
+export function ChatRoomView({ room, initialMessages = null, initialReviews = null }: ChatRoomViewProps) {
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-2 text-sm text-stone-500">
@@ -60,6 +64,10 @@ export function ChatRoomView({ room, initialMessages = null }: ChatRoomViewProps
           </p>
         </div>
       </Card>
+
+      {room.chatStatus === 'completed' ? (
+        <ReviewPanel requestId={room.request.id} roomId={room.id} initial={initialReviews} />
+      ) : null}
 
       <ChatMessagePanel room={room} initialList={initialMessages} />
     </div>

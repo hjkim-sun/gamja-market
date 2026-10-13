@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation';
 import { ChatRoomView } from '@/features/chat/components/ChatRoomView';
 import { getChatRoom } from '@/lib/api/applications';
 import { listMessages } from '@/lib/api/chat';
+import { getTransactionReviews } from '@/lib/api/reviews';
 import { resolveServerApiBase } from '@/lib/api/serverBase';
 import { ApiError } from '@/types/api';
 
@@ -46,11 +47,16 @@ export default async function ChatRoomPage({ params }: ChatRoomPageProps) {
     throw caught;
   }
 
-  const initialMessages = await messagesPromise;
+  // 후기 SSR 실패도 페이지를 깨지 않는다. 패널이 마운트 시 다시 조회한다(설계서 11.5).
+  const reviewsPromise =
+    room.chatStatus === 'completed'
+      ? getTransactionReviews(room.request.id, { baseUrl, cookie }).catch(() => null)
+      : Promise.resolve(null);
+  const [initialMessages, initialReviews] = await Promise.all([messagesPromise, reviewsPromise]);
 
   return (
     <div className="mx-auto max-w-[800px] px-4 py-9 sm:px-6 sm:py-12">
-      <ChatRoomView room={room} initialMessages={initialMessages} />
+      <ChatRoomView room={room} initialMessages={initialMessages} initialReviews={initialReviews} />
     </div>
   );
 }

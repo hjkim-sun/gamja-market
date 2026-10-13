@@ -32,7 +32,7 @@ export interface ChatRoomRequestSummary {
   priceMax: number;
 }
 
-export type ChatStatus = 'active' | 'matched' | 'closed';
+export type ChatStatus = 'active' | 'matched' | 'closed' | 'completed';
 
 export type ChatRoomViewerRole = 'buyer' | 'seller';
 

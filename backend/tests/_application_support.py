@@ -143,3 +143,25 @@ def assert_original_emails_absent(response, *emails: str) -> None:
     serialized = json.dumps(response.json(), ensure_ascii=False)
     for email in emails:
         assert email not in serialized
+
+
+def complete(client: TestClient, headers: dict[str, str], request_id: str):
+    return client.post(f"/api/requests/{request_id}/complete", headers=headers, json={})
+
+
+def post_review(
+    client: TestClient,
+    headers: dict[str, str],
+    request_id: str,
+    rating: int = 5,
+    body: str = "좋은 거래였습니다.",
+):
+    return client.post(
+        f"/api/requests/{request_id}/reviews",
+        headers=headers,
+        json={"rating": rating, "body": body},
+    )
+
+
+def get_reviews(client: TestClient, request_id: str):
+    return client.get(f"/api/requests/{request_id}/reviews")

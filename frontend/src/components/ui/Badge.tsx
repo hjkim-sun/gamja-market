@@ -4,12 +4,14 @@ const statusStyles: Record<RequestStatus, string> = {
   open: 'bg-leaf-50 text-leaf-700 ring-leaf-500/20',
   matched: 'bg-blue-50 text-blue-700 ring-blue-600/20',
   closed: 'bg-stone-100 text-stone-600 ring-stone-500/20',
+  completed: 'bg-violet-50 text-violet-700 ring-violet-600/20',
 };
 
 const statusLabels: Record<RequestStatus, string> = {
   open: '구해요',
   matched: '매칭됨',
   closed: '마감',
+  completed: '거래완료',
 };
 
 interface BadgeProps {
