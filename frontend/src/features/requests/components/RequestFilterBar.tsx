@@ -4,22 +4,24 @@ export type RequestSort = 'latest' | 'price' | 'applicants';
 
 interface RequestFilterBarProps {
   categories: string[];
-  selectedCategory: string;
+  selectedCategories: string[];
   openOnly: boolean;
   sort: RequestSort;
   resultCount: number;
-  onCategoryChange: (category: string) => void;
+  onCategoryToggle: (category: string) => void;
+  onCategoryClear: () => void;
   onOpenOnlyChange: (openOnly: boolean) => void;
   onSortChange: (sort: RequestSort) => void;
 }
 
 export function RequestFilterBar({
   categories,
-  selectedCategory,
+  selectedCategories,
   openOnly,
   sort,
   resultCount,
-  onCategoryChange,
+  onCategoryToggle,
+  onCategoryClear,
   onOpenOnlyChange,
   onSortChange,
 }: RequestFilterBarProps) {
@@ -27,16 +29,19 @@ export function RequestFilterBar({
     <section className="mb-7 rounded-2xl border border-stone-200 bg-white p-4 shadow-card sm:p-5" aria-label="구매요청 필터">
       <div className="flex flex-col gap-5">
         <div>
-          <p className="mb-2.5 text-xs font-bold uppercase tracking-wider text-stone-500">카테고리</p>
+          <p className="mb-2.5 text-xs font-bold uppercase tracking-wider text-stone-500">
+            카테고리
+            <span className="ml-2 text-xs font-medium normal-case tracking-normal text-stone-400">여러 개 선택 가능</span>
+          </p>
           <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="카테고리 선택">
             {['', ...categories].map((category) => {
-              const selected = selectedCategory === category;
+              const selected = category === '' ? selectedCategories.length === 0 : selectedCategories.includes(category);
               return (
                 <button
                   key={category || 'all'}
                   type="button"
                   aria-pressed={selected}
-                  onClick={() => onCategoryChange(category)}
+                  onClick={() => (category === '' ? onCategoryClear() : onCategoryToggle(category))}
                   className={`min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-potato-500 ${
                     selected
                       ? 'bg-stone-900 text-white'

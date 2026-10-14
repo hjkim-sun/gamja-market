@@ -54,7 +54,7 @@ describe('구매요청 API 클라이언트', () => {
 
     await requestsApi.listRequests({
       q: ' 아이패드 ',
-      category: '디지털기기',
+      category: ['디지털기기'],
       status: 'open',
       sort: 'price',
       page: 2,
@@ -74,12 +74,25 @@ describe('구매요청 API 클라이언트', () => {
     });
     expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
 
-    await requestsApi.listRequests({ q: '  ', category: '', status: '', sort: 'latest' });
+    await requestsApi.listRequests({ q: '  ', category: [], status: '', sort: 'latest' });
     const [emptyInput] = fetchMock.mock.calls[1] as [string, RequestInit];
     const emptyUrl = new URL(emptyInput, 'http://localhost');
     expect(emptyUrl.searchParams.has('q')).toBe(false);
     expect(emptyUrl.searchParams.has('category')).toBe(false);
     expect(emptyUrl.searchParams.has('status')).toBe(false);
+  });
+
+  it('카테고리 여러 개는 반복 쿼리 파라미터로 보내고 빈 값과 중복은 제외한다', async () => {
+    const fetchMock = stubFetch(async () =>
+      jsonResponse(200, { items: [summary], total: 1, page: 1, pageSize: 12 }),
+    );
+
+    await requestsApi.listRequests({ category: ['가전', '', '의류', '가전'] });
+
+    const [input] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const url = new URL(input, 'http://localhost');
+    expect(url.searchParams.getAll('category')).toEqual(['가전', '의류']);
+    expect(url.search).toBe('?category=%EA%B0%80%EC%A0%84&category=%EC%9D%98%EB%A5%98');
   });
 
   it('등록 POST에 보안 헤더, same-origin 자격증명, no-store를 사용한다', async () => {
