@@ -339,6 +339,63 @@ def test_list_requests_filters_by_category_status_and_query(client, post_headers
     assert combined["total"] == 1
 
 
+def test_list_requests_filters_by_multiple_categories(client, post_headers, test_ns) -> None:
+    signup(client, post_headers)
+    create_request(client, post_headers, title="태블릿을 구합니다", category="디지털기기")
+    create_request(client, post_headers, title="청소기를 구합니다", category="가전")
+    create_request(client, post_headers, title="코트를 구합니다", category="의류")
+    client.cookies.clear()
+
+    response = client.get(
+        REQUEST_PATH,
+        params=[("q", test_ns), ("category", "가전"), ("category", "의류")],
+    )
+
+    assert response.status_code == 200
+    assert {item["category"] for item in response.json()["items"]} == {"가전", "의류"}
+    assert response.json()["total"] == 2
+
+
+def test_list_requests_keeps_single_category_parameter_compatibility(client, post_headers, test_ns) -> None:
+    signup(client, post_headers)
+    create_request(client, post_headers, title="청소기를 구합니다", category="가전")
+    create_request(client, post_headers, title="코트를 구합니다", category="의류")
+    client.cookies.clear()
+
+    response = client.get(REQUEST_PATH, params={"q": test_ns, "category": "가전"})
+
+    assert response.status_code == 200
+    assert [item["category"] for item in response.json()["items"]] == ["가전"]
+    assert response.json()["total"] == 1
+
+
+def test_list_params_deduplicates_categories_in_order() -> None:
+    from app.api.requests import parse_list_params
+
+    params = parse_list_params(category=["가전", "의류", "가전"])
+
+    assert params.category == ["가전", "의류"]
+    assert parse_list_params(category=[]).category is None
+
+
+def test_list_requests_rejects_invalid_category_in_repeated_values(client) -> None:
+    response = client.get(
+        REQUEST_PATH,
+        params=[("category", "가전"), ("category", "식품")],
+    )
+
+    assert_error(response, 422, "VALIDATION_ERROR", "category")
+
+
+def test_list_requests_rejects_more_than_twenty_category_values(client) -> None:
+    response = client.get(
+        REQUEST_PATH,
+        params=[("category", "가전")] * 21,
+    )
+
+    assert_error(response, 422, "VALIDATION_ERROR", "category")
+
+
 def test_list_query_escapes_like_wildcards(client, post_headers, test_ns) -> None:
     signup(client, post_headers)
     create_request(client, post_headers, title="100% 확실한 거래")

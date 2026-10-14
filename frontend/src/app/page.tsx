@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { headers } from 'next/headers';
 
-import { requestCategories } from '@/features/requests/categories';
+import { requestCategories, resolveCategories } from '@/features/requests/categories';
 import { RequestBrowser } from '@/features/requests/components/RequestBrowser';
 import { listRequests, resolveListPage } from '@/lib/api/requests';
 import { resolveServerApiBase } from '@/lib/api/serverBase';
@@ -27,7 +27,7 @@ async function RequestBrowserSection({ searchParams }: HomePageProps) {
   const { items, total, page: currentPage, pageSize } = await listRequests(
     {
       q: firstValue(params.q),
-      category: firstValue(params.category),
+      category: resolveCategories(params.category),
       status: firstValue(params.status),
       sort: firstValue(params.sort) as 'latest' | 'price' | 'applicants' | undefined,
       page: resolveListPage(firstValue(params.page)),

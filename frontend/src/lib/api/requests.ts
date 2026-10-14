@@ -173,7 +173,9 @@ function buildQuery(params: ListRequestsParams): string {
 
   const q = params.q?.trim();
   if (q) query.set('q', q);
-  if (params.category) query.set('category', params.category);
+  for (const category of new Set(params.category ?? [])) {
+    if (category) query.append('category', category);
+  }
   if (params.status) query.set('status', params.status);
   if (params.sort && params.sort !== 'latest') query.set('sort', params.sort);
   if (params.page !== undefined) query.set('page', String(params.page));

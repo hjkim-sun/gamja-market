@@ -63,7 +63,7 @@ def list_and_count(
     db: Session,
     *,
     q: str | None,
-    category: str | None,
+    category: list[str] | None,
     status: str | None,
     sort: str | None,
     page: int,
@@ -73,8 +73,11 @@ def list_and_count(
     if q is not None:
         escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         conditions.append(func.lower(PurchaseRequest.title).like(f"%{escaped.lower()}%", escape="\\"))
-    if category is not None:
-        conditions.append(PurchaseRequest.category == category)
+    if category:
+        if len(category) == 1:
+            conditions.append(PurchaseRequest.category == category[0])
+        else:
+            conditions.append(PurchaseRequest.category.in_(category))
     # This stage exposes only the open filter. Unknown values retain the public all-status view.
     if status == "open":
         conditions.append(PurchaseRequest.status == "open")

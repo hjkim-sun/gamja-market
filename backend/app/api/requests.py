@@ -32,7 +32,7 @@ def _no_store(response: Response) -> None:
 
 def parse_list_params(
     q: Annotated[str | None, Query(max_length=60)] = None,
-    category: RequestCategory | None = None,
+    category: Annotated[list[RequestCategory] | None, Query()] = None,
     status: str | None = None,
     sort: str | None = None,
     page: Annotated[int, Query(ge=1, le=MAX_LIST_PAGE)] = 1,

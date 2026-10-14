@@ -70,7 +70,7 @@ export interface CreateRequestPayload {
 
 export interface ListRequestsParams {
   q?: string;
-  category?: string;
+  category?: string[];
   status?: string;
   sort?: 'latest' | 'price' | 'applicants';
   page?: number;

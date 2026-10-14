@@ -62,7 +62,7 @@ class PurchaseRequestCreate(RequestSchema):
 
 class RequestListParams(RequestSchema):
     q: str | None = Field(default=None, max_length=60)
-    category: RequestCategory | None = None
+    category: list[RequestCategory] | None = Field(default=None, max_length=20)
     status: str | None = None
     sort: str | None = None
     page: int = Field(default=1, ge=1, le=500)
@@ -79,6 +79,18 @@ class RequestListParams(RequestSchema):
         if not normalized:
             raise ValueError("q must not be blank")
         return normalized
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def normalize_categories(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, (list, tuple)):
+            value = [value]
+        if len(value) > 20:
+            raise ValueError("category must contain at most 20 values")
+        categories = list(dict.fromkeys(value))
+        return categories or None
 
 
 class PurchaseRequestSummary(RequestSchema):
